@@ -10,6 +10,12 @@ import {
   selectStealCard,
   skipTurn,
 } from "@/lib/game-actions";
+import {
+  SpeakBanner,
+  SpeakConfirmSheet,
+  speakGainScript,
+  speakReleaseScript,
+} from "@/components/SpeakThenConfirm";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { MAX_DENY, type Player, type Room } from "@/lib/types";
 
@@ -25,6 +31,12 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [fieldQuery, setFieldQuery] = useState("");
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(null);
+  const [selectedDiscardId, setSelectedDiscardId] = useState<string | null>(
+    null,
+  );
+  const [confirmKind, setConfirmKind] = useState<"discard" | "gain" | null>(
+    null,
+  );
 
   const byId = useMemo(() => {
     const map = new Map(players.map((p) => [p.id, p]));
@@ -54,6 +66,17 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
       .filter((c): c is NonNullable<typeof c> => Boolean(c))
       .filter((c) => !q || c.label.includes(q));
   }, [room.field, fieldQuery]);
+
+  const canDiscardNow =
+    room.sub_state === "DISCARD" && room.current_player_id === me.id;
+  const canGainNow = room.sub_state === "GAIN" && victimId === me.id;
+
+  const discardLabel = selectedDiscardId
+    ? (getCard(selectedDiscardId)?.label ?? selectedDiscardId)
+    : null;
+  const gainLabel = selectedFieldId
+    ? (getCard(selectedFieldId)?.label ?? selectedFieldId)
+    : null;
 
   async function run(action: () => Promise<void>) {
     setBusy(true);
@@ -85,14 +108,17 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <p className="text-xs font-semibold text-mint">プレイ中</p>
-            <p className="text-sm text-muted mt-1">
+            <p className="mt-1 text-sm text-muted">
               ターン進行: 各人{" "}
-              {sorted.map((p) => `${p.display_name}${p.turns_completed}`).join(" / ")} /5
+              {sorted
+                .map((p) => `${p.display_name}${p.turns_completed}`)
+                .join(" / ")}{" "}
+              /5
             </p>
             <p className="mt-2 text-sm font-semibold text-foreground">
               いま: {subLabel}
             </p>
-            <p className="text-xs text-muted mt-1">
+            <p className="mt-1 text-xs text-muted">
               ダメ使用: {room.deny_count} / {MAX_DENY}
             </p>
           </div>
@@ -124,10 +150,10 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
               key={p.id}
               className={`rounded-full px-3 py-1 text-xs ${
                 p.id === room.current_player_id
-                  ? "bg-accent text-[#1c2421] font-semibold"
+                  ? "bg-accent font-semibold text-[#1c2421]"
                   : p.id === victimId && room.sub_state === "STEAL_CONFIRM"
                     ? "card-targeted border border-accent bg-background font-semibold text-accent"
-                    : "bg-background border border-line"
+                    : "border border-line bg-background"
               }`}
             >
               {p.display_name}
@@ -140,9 +166,8 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         </div>
       </section>
 
-      {/* 選ばれた手札の強調（確認フェーズ） */}
       {room.sub_state === "STEAL_CONFIRM" && victim && (
-        <section className="rounded-2xl border-2 border-accent bg-panel p-4 space-y-4">
+        <section className="space-y-4 rounded-2xl border-2 border-accent bg-panel p-4">
           <div>
             <h2 className="text-sm font-semibold text-accent">
               {victimId === me.id
@@ -249,10 +274,9 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         </section>
       )}
 
-      {/* 自分の手札 */}
       <section
-        className={`rounded-2xl bg-panel p-4 space-y-3 ${
-          room.sub_state === "DISCARD" && room.current_player_id === me.id
+        className={`space-y-3 rounded-2xl bg-panel p-4 ${
+          canDiscardNow
             ? "border-2 border-accent shadow-[0_0_0_1px_rgba(255,143,107,0.35)]"
             : room.sub_state === "STEAL_CONFIRM" && victimId === me.id
               ? "border-2 border-accent/70"
@@ -261,17 +285,27 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-semibold text-accent">あなたの手札</h2>
-          {room.sub_state === "DISCARD" && room.current_player_id === me.id && (
+          {canDiscardNow && (
             <span className="card-targeted-label rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-[#16382f]">
               ここで1枚選んで捨てる
             </span>
           )}
         </div>
+
+        {canDiscardNow && (
+          <SpeakBanner
+            script={
+              discardLabel
+                ? speakReleaseScript(discardLabel)
+                : "私は「〇〇」を手放します"
+            }
+          />
+        )}
+
         <div className="flex flex-wrap gap-2">
           {me.hand.map((id) => {
             const card = getCard(id);
-            const canDiscard =
-              room.sub_state === "DISCARD" && room.current_player_id === me.id;
+            const isSelected = canDiscardNow && selectedDiscardId === id;
             const isTargeted =
               room.sub_state === "STEAL_CONFIRM" &&
               victimId === me.id &&
@@ -280,21 +314,16 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
               <button
                 key={id}
                 type="button"
-                disabled={busy || !canDiscard}
-                onClick={() =>
-                  void run(async () => {
-                    const supabase = createBrowserClient();
-                    await discardCard({
-                      supabase,
-                      room,
-                      players,
-                      actorId: me.id,
-                      cardId: id,
-                    });
-                  })
-                }
+                disabled={busy || !canDiscardNow}
+                onClick={() => {
+                  if (!canDiscardNow) return;
+                  setSelectedDiscardId(id);
+                  setConfirmKind(null);
+                }}
                 className={`relative min-w-[88px] rounded-xl border bg-[#1a2038]/90 px-3 py-4 text-center shadow-sm disabled:opacity-60 ${
-                  isTargeted ? "card-targeted border-accent" : "border-line"
+                  isSelected || isTargeted
+                    ? "card-targeted border-accent"
+                    : "border-line"
                 }`}
               >
                 {isTargeted && (
@@ -302,7 +331,11 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
                     選択中
                   </span>
                 )}
-                <div className={`font-bold ${isTargeted ? "text-accent" : ""}`}>
+                <div
+                  className={`font-bold ${
+                    isSelected || isTargeted ? "text-accent" : ""
+                  }`}
+                >
                   {card?.label ?? id}
                 </div>
                 <div className="mt-1 text-[10px] text-muted">
@@ -312,10 +345,16 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
             );
           })}
         </div>
-        {room.sub_state === "DISCARD" && room.current_player_id === me.id && (
-          <p className="text-xs text-mint">
-            捨てるカードをタップしてください（Zoomでも声に出してOK）
-          </p>
+
+        {canDiscardNow && (
+          <button
+            type="button"
+            disabled={busy || !selectedDiscardId}
+            className="w-full rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
+            onClick={() => setConfirmKind("discard")}
+          >
+            このカードを手放す…
+          </button>
         )}
         {room.sub_state === "STEAL_CONFIRM" && victimId === me.id && (
           <p className="text-xs text-accent">
@@ -324,11 +363,10 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         )}
       </section>
 
-      {/* 隣から奪う */}
       {room.sub_state === "STEAL_SELECT" &&
         room.current_player_id === me.id &&
         victim && (
-          <section className="rounded-2xl border-2 border-accent bg-panel p-4 space-y-3 shadow-[0_0_0_1px_rgba(255,143,107,0.35)]">
+          <section className="space-y-3 rounded-2xl border-2 border-accent bg-panel p-4 shadow-[0_0_0_1px_rgba(255,143,107,0.35)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-semibold text-accent">
                 {victim.display_name} の手札（裏）から1枚選ぶ
@@ -345,7 +383,9 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
                     key={`${id}-${index}`}
                     type="button"
                     disabled={busy || denied}
-                    title={denied ? "この手番ですでにダメされたカード" : undefined}
+                    title={
+                      denied ? "この手番ですでにダメされたカード" : undefined
+                    }
                     onClick={() =>
                       void run(async () => {
                         const supabase = createBrowserClient();
@@ -376,10 +416,9 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
           </section>
         )}
 
-      {/* 場から得る */}
       <section
-        className={`rounded-2xl bg-panel p-4 space-y-3 ${
-          room.sub_state === "GAIN" && victimId === me.id
+        className={`space-y-3 rounded-2xl bg-panel p-4 ${
+          canGainNow
             ? "border-2 border-accent shadow-[0_0_0_1px_rgba(255,143,107,0.35)]"
             : "border border-line"
         }`}
@@ -388,36 +427,49 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
           <h2 className="text-sm font-semibold text-accent">
             場のカード（{room.field.length}枚）
           </h2>
-          {room.sub_state === "GAIN" && victimId === me.id && (
+          {canGainNow && (
             <span className="card-targeted-label rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-[#16382f]">
               ここで1枚選んで得る
             </span>
           )}
         </div>
+
+        {canGainNow && (
+          <SpeakBanner
+            script={
+              gainLabel
+                ? speakGainScript(gainLabel)
+                : "私は「〇〇」を手に入れます"
+            }
+          />
+        )}
+
         <input
           className="w-full rounded-xl border border-line bg-background px-3 py-2 text-sm outline-none focus:border-accent"
           placeholder="検索（例: 自由）"
           value={fieldQuery}
           onChange={(e) => setFieldQuery(e.target.value)}
         />
-            <div className={`grid max-h-56 grid-cols-3 gap-2 overflow-auto rounded-xl p-2 sm:grid-cols-4 ${
-            room.sub_state === "GAIN" && victimId === me.id
-              ? "border border-accent/40 bg-[#14182e]/70"
-              : ""
-          }`}>
+        <div
+          className={`grid max-h-56 grid-cols-3 gap-2 overflow-auto rounded-xl p-2 sm:grid-cols-4 ${
+            canGainNow ? "border border-accent/40 bg-[#14182e]/70" : ""
+          }`}
+        >
           {fieldCards.map((card) => {
-            const canGain = room.sub_state === "GAIN" && victimId === me.id;
             const selected = selectedFieldId === card.id;
             return (
               <button
                 key={card.id}
                 type="button"
-                disabled={busy || !canGain}
-                onClick={() => setSelectedFieldId(card.id)}
+                disabled={busy || !canGainNow}
+                onClick={() => {
+                  setSelectedFieldId(card.id);
+                  setConfirmKind(null);
+                }}
                 className={`rounded-xl border px-2 py-3 text-sm font-semibold disabled:opacity-50 ${
                   selected
                     ? "card-targeted border-accent text-accent"
-                    : canGain
+                    : canGainNow
                       ? "border-[#b794ff]/40 bg-[#1a2038] hover:border-accent"
                       : "border-line bg-[#1a2038]/80"
                 }`}
@@ -427,32 +479,65 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
             );
           })}
         </div>
-        {room.sub_state === "GAIN" && victimId === me.id && (
+        {canGainNow && (
           <button
             type="button"
             disabled={busy || !selectedFieldId}
-            className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-2 text-sm font-bold text-[#12122a] disabled:opacity-40"
-            onClick={() =>
-              void run(async () => {
-                if (!selectedFieldId) return;
-                const supabase = createBrowserClient();
-                await gainCard({
-                  supabase,
-                  room,
-                  players,
-                  actorId: me.id,
-                  cardId: selectedFieldId,
-                });
-                setSelectedFieldId(null);
-              })
-            }
+            className="w-full rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
+            onClick={() => setConfirmKind("gain")}
           >
-            このカードを得る
+            このカードを得る…
           </button>
         )}
       </section>
 
       {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
+
+      {confirmKind === "discard" && discardLabel && selectedDiscardId && (
+        <SpeakConfirmSheet
+          script={speakReleaseScript(discardLabel)}
+          actionLabel="手放す（確定）"
+          busy={busy}
+          onCancel={() => setConfirmKind(null)}
+          onConfirm={() =>
+            void run(async () => {
+              const supabase = createBrowserClient();
+              await discardCard({
+                supabase,
+                room,
+                players,
+                actorId: me.id,
+                cardId: selectedDiscardId,
+              });
+              setSelectedDiscardId(null);
+              setConfirmKind(null);
+            })
+          }
+        />
+      )}
+
+      {confirmKind === "gain" && gainLabel && selectedFieldId && (
+        <SpeakConfirmSheet
+          script={speakGainScript(gainLabel)}
+          actionLabel="得る（確定）"
+          busy={busy}
+          onCancel={() => setConfirmKind(null)}
+          onConfirm={() =>
+            void run(async () => {
+              const supabase = createBrowserClient();
+              await gainCard({
+                supabase,
+                room,
+                players,
+                actorId: me.id,
+                cardId: selectedFieldId,
+              });
+              setSelectedFieldId(null);
+              setConfirmKind(null);
+            })
+          }
+        />
+      )}
     </div>
   );
 }
