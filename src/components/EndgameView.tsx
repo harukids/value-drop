@@ -527,7 +527,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                             : "この人のステートメントを整える"}
                     </button>
                   ) : null}
-                  {p.id === me.id ? null : (
+                  {me.is_host && p.id !== me.id ? (
                     <button
                       type="button"
                       disabled={savingPosterId === p.id}
@@ -559,7 +559,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                     >
                       {savingPosterId === p.id ? "作成中…" : "この人の分を画像保存"}
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </article>
             ))}
