@@ -144,7 +144,12 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
           setSubIds([]);
           return;
         }
-        if (id === mainId) return;
+        // サブ段階: メイン札をもう一度タップしたら解除してメイン選択に戻る
+        if (id === mainId) {
+          setMainId(null);
+          setSubIds([]);
+          return;
+        }
         setSubIds((prev) => {
           if (prev.includes(id)) return prev.filter((x) => x !== id);
           if (prev.length >= 2) return [prev[1], id];
@@ -171,20 +176,19 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                 const card = getCard(id);
                 const isMain = mainId === id;
                 const isSub = subIds.includes(id);
-                const lockedMain = selectStep === "sub" && isMain;
                 return (
                   <button
                     key={id}
                     type="button"
-                    disabled={busy || lockedMain}
+                    disabled={busy}
                     onClick={() => onSelectCard(id)}
-                    className={`min-w-[96px] rounded-xl border px-3 py-3 text-center transition disabled:cursor-default ${
+                    className={`min-w-[96px] rounded-xl border px-3 py-3 text-center transition ${
                       isMain
                         ? "border-accent bg-accent/10"
                         : isSub
                           ? "border-mint bg-mint/10"
                           : "border-line bg-background hover:border-white/30"
-                    } ${lockedMain ? "opacity-90" : ""}`}
+                    }`}
                   >
                     {(isMain || isSub) && (
                       <span
