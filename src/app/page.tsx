@@ -94,7 +94,7 @@ export default function HomePage() {
           Value Drop online
         </p>
         <h1 className="text-3xl font-bold leading-tight text-foreground">
-          価値観を選び、
+          価値観を選び
           <br />
           言葉にする
         </h1>

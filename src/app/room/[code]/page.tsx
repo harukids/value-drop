@@ -2,11 +2,11 @@
 
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import Link from "next/link";
 import { createBrowserClient, isSupabaseConfigured } from "@/lib/supabase/client";
 import { clearPlayerId, loadPlayerId } from "@/lib/player-storage";
 import { joinRoomAsGuest } from "@/lib/join-room";
 import { startAndDeal } from "@/lib/game-actions";
+import { DECK } from "@/lib/deck";
 import { PlayingView } from "@/components/PlayingView";
 import { EndgameView } from "@/components/EndgameView";
 import { LineArtCoverBg } from "@/components/LineArtCoverBg";
@@ -265,9 +265,9 @@ export default function RoomPage() {
     return (
       <main className="mx-auto max-w-lg space-y-4 p-8">
         <p className="text-[#f0a0a0]">{error ?? "部屋がありません"}</p>
-        <Link href="/" className="text-mint underline">
-          トップへ
-        </Link>
+        <p className="text-sm text-muted">
+          URLを確認するか、このタブを閉じてホストに連絡してください。
+        </p>
       </main>
     );
   }
@@ -287,17 +287,28 @@ export default function RoomPage() {
         <LineArtCoverBg denser pattern="scatterUltra" />
         <main className="relative z-[1] mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-6 px-4 py-12">
         <header className="space-y-2">
-          <p className="text-xs font-semibold tracking-wide text-mint">部屋 {code}</p>
-          <h1 className="text-2xl font-bold">参加する</h1>
-          <p className="text-sm text-muted">
-            表示名を入れて入室してください。いま {players.length} / {MAX_PLAYERS} 人です。
+          <p className="text-sm font-semibold tracking-wide text-mint">
+            Value Drop online
+          </p>
+          <h1 className="text-3xl font-bold leading-tight text-foreground">
+            価値観を選び
+            <br />
+            言葉にする
+          </h1>
+          <p className="text-sm leading-relaxed text-muted">
+            Zoomなどで話しながら、各自のブラウザでカードを取ります。デッキ{" "}
+            {DECK.length}{" "}
+            枚のカードからあなたの価値観を掘り出してゆく、ゲーム方式のワークです。
+          </p>
+          <p className="text-xs text-muted">
+            部屋 {code} ／ いま {players.length} / {MAX_PLAYERS} 人
           </p>
         </header>
 
-        <label className="block space-y-1">
-          <span className="text-sm text-muted">表示名</span>
+        <label className="block space-y-1.5">
+          <span className="text-xs font-semibold text-mint">表示名</span>
           <input
-            className="w-full rounded-xl border border-line bg-panel px-3 py-2 outline-none focus:border-accent"
+            className="w-full rounded-xl border border-line bg-panel px-3 py-2.5 outline-none focus:border-accent"
             value={joinName}
             onChange={(e) => setJoinName(e.target.value)}
             placeholder="例: はるき"
@@ -325,10 +336,6 @@ export default function RoomPage() {
         )}
 
         {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
-
-        <Link href="/" className="text-sm text-mint underline">
-          トップへ
-        </Link>
       </main>
       </>
     );
@@ -354,11 +361,9 @@ export default function RoomPage() {
             ? "ロビー"
             : room.phase === "PLAYING"
               ? "プレイ中"
-              : room.phase === "SELECTING"
-                ? "価値観を選ぶ"
-                : room.phase === "WRITING"
-                  ? "理由を書く"
-                  : room.phase === "RESULT" || room.phase === "CLOSED"
+              : room.phase === "SELECTING" || room.phase === "WRITING"
+                ? "選定・理由"
+                : room.phase === "RESULT" || room.phase === "CLOSED"
                     ? "結果"
                     : room.phase}
         </h1>
@@ -477,18 +482,8 @@ export default function RoomPage() {
         <section className="rounded-2xl border border-accent bg-panel p-5 space-y-3">
           <h2 className="font-semibold text-accent">このブラウザでは参加者として認識できていません</h2>
           <p className="text-sm text-muted leading-relaxed">
-            別の窓・シークレット・端末で開いている可能性があります。トップに戻り、同じ部屋コードで
-            <strong className="text-foreground">表示名を入れて再入室</strong>
-            してください（開始後は通常入室できません）。まずは
-            <strong className="text-foreground">新しい部屋</strong>
-            を作り直すのが確実です。
+            席は入室したブラウザにだけ保存されます。同じブラウザでこの部屋のリンクを開き直せば戻れます。別の端末・シークレット・別ブラウザでは別人扱いになり、開始後は入れません。どうしても端末を変えられない場合は、ホストに相談してください。
           </p>
-          <Link
-            href="/"
-            className="inline-block rounded-xl bg-accent px-4 py-2 text-sm font-bold text-[#1c2421]"
-          >
-            トップへ戻る
-          </Link>
         </section>
       )}
 
@@ -514,18 +509,13 @@ export default function RoomPage() {
         !me && (
           <section className="rounded-2xl border border-line bg-panel p-5 space-y-2">
             <h2 className="font-semibold text-accent">参加者情報が見つかりません</h2>
-            <p className="text-sm text-muted">トップから入り直すか、新しい部屋を作ってください。</p>
-            <Link href="/" className="text-sm text-mint underline">
-              トップへ
-            </Link>
+            <p className="text-sm text-muted leading-relaxed">
+              同じブラウザでこの部屋のリンクを開き直してください。別の端末では席を引き継げません。このタブを閉じても構いません。
+            </p>
           </section>
         )}
 
       {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
-
-      <Link href="/" className="text-sm text-mint underline">
-        トップへ
-      </Link>
     </main>
     </>
   );

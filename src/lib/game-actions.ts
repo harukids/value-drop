@@ -296,7 +296,9 @@ export async function submitSelection({
   mainCardId,
   subCardIds,
 }: Ctx & { mainCardId: string; subCardIds: [string, string] }) {
-  if (room.phase !== "SELECTING") throw new Error("選定フェーズではありません");
+  if (room.phase !== "SELECTING" && room.phase !== "WRITING") {
+    throw new Error("選定フェーズではありません");
+  }
   const me = requirePlayer(players, actorId);
   if (me.ready_selecting) throw new Error("すでに選定済みです");
   if (!me.hand.includes(mainCardId)) throw new Error("メインが手札にありません");
@@ -315,14 +317,38 @@ export async function submitSelection({
     })
     .eq("id", actorId);
   if (error) throw error;
+  // 選定が終わった人から理由へ進める（部屋 phase は全員の理由送信まで SELECTING のまま）
+}
 
-  const othersReady = players
-    .filter((p) => p.id !== actorId)
-    .every((p) => p.ready_selecting);
-  if (othersReady) {
+/** 理由送信前だけ。選定をやり直す */
+export async function revertSelection({
+  supabase,
+  room,
+  players,
+  actorId,
+}: Ctx) {
+  if (room.phase !== "SELECTING" && room.phase !== "WRITING") {
+    throw new Error("いまは選定に戻れません");
+  }
+  const me = requirePlayer(players, actorId);
+  if (!me.ready_selecting) throw new Error("まだ選定していません");
+  if (me.ready_writing) throw new Error("理由を送ったあとは選定に戻れません");
+
+  const { error } = await supabase
+    .from("players")
+    .update({
+      main_card_id: null,
+      sub_card_ids: [],
+      ready_selecting: false,
+      reason: null,
+    })
+    .eq("id", actorId);
+  if (error) throw error;
+
+  if (room.phase === "WRITING") {
     const { error: roomError } = await supabase
       .from("rooms")
-      .update({ phase: "WRITING" })
+      .update({ phase: "SELECTING" })
       .eq("code", room.code);
     if (roomError) throw roomError;
   }
@@ -335,8 +361,11 @@ export async function submitReason({
   actorId,
   reason,
 }: Ctx & { reason: string }) {
-  if (room.phase !== "WRITING") throw new Error("理由入力フェーズではありません");
+  if (room.phase !== "SELECTING" && room.phase !== "WRITING") {
+    throw new Error("理由入力フェーズではありません");
+  }
   const me = requirePlayer(players, actorId);
+  if (!me.ready_selecting) throw new Error("先に価値観を選んでください");
   if (me.ready_writing) throw new Error("すでに送信済みです");
   const trimmed = reason.trim();
   if (!trimmed) throw new Error("理由を書いてください");

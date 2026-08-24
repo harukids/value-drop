@@ -167,7 +167,7 @@ export default function PosterPreviewPage() {
             className="mx-auto w-full max-w-md rounded-xl"
           />
         ) : (
-          <div className="flex aspect-[1080/1350] items-center justify-center text-sm text-muted">
+          <div className="flex aspect-[1080/1527] items-center justify-center text-sm text-muted">
             {rendering ? "見本を描画中…" : "見本を準備中…"}
           </div>
         )}

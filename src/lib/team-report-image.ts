@@ -5,6 +5,7 @@ import {
   type TeamSnapshot,
 } from "@/lib/team-report";
 import { getValueCardPillarTone } from "@/lib/result-poster";
+import { PRINT_A4_HEIGHT, PRINT_A4_WIDTH } from "@/lib/print-page";
 import type { Pillar } from "@/lib/types";
 
 const PILLAR_COLORS: Record<Pillar, string> = {
@@ -14,7 +15,8 @@ const PILLAR_COLORS: Record<Pillar, string> = {
 };
 
 const CACHE = "20260822i";
-const WIDTH = 1080;
+const WIDTH = PRINT_A4_WIDTH;
+const HEIGHT = PRINT_A4_HEIGHT;
 const FRAME = 40;
 const CONTENT_LEFT = 80;
 const CONTENT_RIGHT = WIDTH - 80;
@@ -387,24 +389,24 @@ export async function downloadTeamReportImage(input: {
   yCursor += analysisBoxH;
   yCursor += 70;
 
-  const height = Math.max(1600, Math.ceil(yCursor + FRAME + 24));
+  const naturalHeight = Math.max(HEIGHT, Math.ceil(yCursor + FRAME + 24));
 
-  const canvas = document.createElement("canvas");
-  canvas.width = WIDTH;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
+  const content = document.createElement("canvas");
+  content.width = WIDTH;
+  content.height = naturalHeight;
+  const ctx = content.getContext("2d");
   if (!ctx) throw new Error("画像を作れませんでした");
 
-  const bg = ctx.createLinearGradient(0, 0, WIDTH, height);
+  const bg = ctx.createLinearGradient(0, 0, WIDTH, naturalHeight);
   bg.addColorStop(0, "#0b1020");
   bg.addColorStop(0.45, "#161a38");
   bg.addColorStop(1, "#1a1230");
   ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, WIDTH, height);
+  ctx.fillRect(0, 0, WIDTH, naturalHeight);
 
   ctx.strokeStyle = "rgba(255,255,255,0.22)";
   ctx.lineWidth = 4;
-  roundRect(ctx, FRAME, FRAME, WIDTH - FRAME * 2, height - FRAME * 2, 36);
+  roundRect(ctx, FRAME, FRAME, WIDTH - FRAME * 2, naturalHeight - FRAME * 2, 36);
   ctx.stroke();
 
   ctx.textAlign = "center";
@@ -513,7 +515,9 @@ export async function downloadTeamReportImage(input: {
   ctx.textAlign = "center";
   ctx.fillStyle = "#98a8d0";
   ctx.font = "500 20px 'Zen Maru Gothic', 'Hiragino Sans', sans-serif";
-  ctx.fillText(date, WIDTH / 2, height - 55);
+  ctx.fillText(date, WIDTH / 2, naturalHeight - 55);
+
+  const canvas = fitCanvasToA4(content);
 
   await new Promise<void>((resolve, reject) => {
     canvas.toBlob((blob) => {
@@ -530,6 +534,34 @@ export async function downloadTeamReportImage(input: {
       resolve();
     }, "image/png");
   });
+}
+
+/** 中身を A4 縦比率のキャンバスに収める（はみ出す場合は等比縮小） */
+function fitCanvasToA4(source: HTMLCanvasElement): HTMLCanvasElement {
+  if (source.width === WIDTH && source.height === HEIGHT) {
+    return source;
+  }
+
+  const out = document.createElement("canvas");
+  out.width = WIDTH;
+  out.height = HEIGHT;
+  const ctx = out.getContext("2d");
+  if (!ctx) return source;
+
+  const bg = ctx.createLinearGradient(0, 0, WIDTH, HEIGHT);
+  bg.addColorStop(0, "#0b1020");
+  bg.addColorStop(0.45, "#161a38");
+  bg.addColorStop(1, "#1a1230");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+
+  const scale = Math.min(1, HEIGHT / source.height, WIDTH / source.width);
+  const dw = source.width * scale;
+  const dh = source.height * scale;
+  const dx = (WIDTH - dw) / 2;
+  const dy = (HEIGHT - dh) / 2;
+  ctx.drawImage(source, dx, dy, dw, dh);
+  return out;
 }
 
 function roundRect(

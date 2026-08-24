@@ -25,7 +25,7 @@ function FakeEntryUi({ compact }: { compact?: boolean }) {
       {!compact && (
         <>
           <h2 className="text-lg font-bold leading-tight">
-            価値観を選び、
+            価値観を選び
             <br />
             言葉にする
           </h2>

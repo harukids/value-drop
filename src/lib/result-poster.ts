@@ -1,4 +1,5 @@
 import { getCard } from "@/lib/deck";
+import { PRINT_A4_HEIGHT, PRINT_A4_WIDTH } from "@/lib/print-page";
 import type { Pillar } from "@/lib/types";
 
 export type PosterInput = {
@@ -315,8 +316,8 @@ export async function renderResultPoster(
     }
   }
 
-  const width = 1080;
-  const height = 1350;
+  const width = PRINT_A4_WIDTH;
+  const height = PRINT_A4_HEIGHT;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -456,13 +457,13 @@ export async function renderResultPoster(
     ctx.textBaseline = "alphabetic";
   });
 
-  // 細い内枠の下辺は y=1272。日付はその上に置く
-  const dateY = 1248;
+  // 内枠下辺の少し上に日付。A4縦に合わせて理由欄を伸ばす
+  const dateY = height - 102;
   const boxTop = Math.min(subY + 158, 860);
   const reason = (input.reason ?? "").trim() || "（理由未入力）";
   const statement = (input.statement ?? "").trim();
   const finalFiveReserve = 52;
-  const boxH = Math.min(280, dateY - 40 - boxTop - finalFiveReserve);
+  const boxH = Math.max(200, dateY - 40 - boxTop - finalFiveReserve);
   ctx.fillStyle = "rgba(10, 12, 28, 0.55)";
   roundRect(ctx, 120, boxTop, width - 240, boxH, 28);
   ctx.fill();
