@@ -86,15 +86,6 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     }
   }
 
-  function toggleSub(id: string) {
-    if (id === mainId) return;
-    setSubIds((prev) => {
-      if (prev.includes(id)) return prev.filter((x) => x !== id);
-      if (prev.length >= 2) return [prev[1], id];
-      return [...prev, id];
-    });
-  }
-
   async function generateStatementFor(target: Player) {
     if (!canGenerateFor(target)) return;
     const targetReason =
@@ -143,12 +134,32 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     ).length;
 
     if (!me.ready_selecting) {
+      const mainLabel = mainId ? getCard(mainId)?.label : null;
+      const selectStep: "main" | "sub" = mainId ? "sub" : "main";
+
+      function onSelectCard(id: string) {
+        if (busy) return;
+        if (selectStep === "main") {
+          setMainId((prev) => (prev === id ? null : id));
+          setSubIds([]);
+          return;
+        }
+        if (id === mainId) return;
+        setSubIds((prev) => {
+          if (prev.includes(id)) return prev.filter((x) => x !== id);
+          if (prev.length >= 2) return [prev[1], id];
+          return [...prev, id];
+        });
+      }
+
       return (
         <div className="space-y-4">
           <section className="rounded-2xl border border-line bg-panel p-4 space-y-3">
             <h2 className="text-sm font-semibold text-accent">価値観を選ぶ</h2>
             <p className="text-sm text-muted">
-              手札5枚から、メイン1・サブ2を選んでください。
+              {selectStep === "main"
+                ? "まず、いちばん大切にしたい価値観を1枚タップしてください。"
+                : `次に、サブを2枚タップしてください。（メイン: ${mainLabel}）`}
             </p>
             {stillSelecting > 1 && (
               <p className="text-xs text-muted">
@@ -160,54 +171,61 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                 const card = getCard(id);
                 const isMain = mainId === id;
                 const isSub = subIds.includes(id);
+                const lockedMain = selectStep === "sub" && isMain;
                 return (
-                  <div
+                  <button
                     key={id}
-                    className={`min-w-[96px] rounded-xl border px-3 py-3 text-center ${
+                    type="button"
+                    disabled={busy || lockedMain}
+                    onClick={() => onSelectCard(id)}
+                    className={`min-w-[96px] rounded-xl border px-3 py-3 text-center transition disabled:cursor-default ${
                       isMain
                         ? "border-accent bg-accent/10"
                         : isSub
                           ? "border-mint bg-mint/10"
-                          : "border-line bg-background"
-                    }`}
+                          : "border-line bg-background hover:border-white/30"
+                    } ${lockedMain ? "opacity-90" : ""}`}
                   >
+                    {(isMain || isSub) && (
+                      <span
+                        className={`mb-1 inline-block rounded-md px-1.5 py-0.5 text-[10px] font-bold ${
+                          isMain
+                            ? "bg-accent/20 text-accent"
+                            : "bg-mint/20 text-mint"
+                        }`}
+                      >
+                        {isMain ? "メイン" : "サブ"}
+                      </span>
+                    )}
                     <div className="font-bold">{card?.label}</div>
                     <div className="mt-1 text-[10px] text-muted">
                       {card ? PILLAR_LABEL[card.pillar] : ""}
                     </div>
-                    <div className="mt-2 flex flex-col gap-1">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        className="rounded-lg border border-line px-2 py-1 text-[11px]"
-                        onClick={() => {
-                          setMainId(id);
-                          setSubIds((prev) => prev.filter((x) => x !== id));
-                        }}
-                      >
-                        メイン
-                      </button>
-                      <button
-                        type="button"
-                        disabled={busy || mainId === id}
-                        className="rounded-lg border border-line px-2 py-1 text-[11px] disabled:opacity-30"
-                        onClick={() => toggleSub(id)}
-                      >
-                        サブ
-                      </button>
-                    </div>
-                  </div>
+                  </button>
                 );
               })}
             </div>
             <p className="text-xs text-muted">
-              メイン: {mainId ? getCard(mainId)?.label : "未選択"} ／ サブ:{" "}
+              メイン: {mainLabel ?? "未選択"} ／ サブ:{" "}
               {subIds.map((id) => getCard(id)?.label).join("、") || "未選択"}
             </p>
+            {selectStep === "sub" && (
+              <button
+                type="button"
+                disabled={busy}
+                className="text-sm text-mint underline"
+                onClick={() => {
+                  setMainId(null);
+                  setSubIds([]);
+                }}
+              >
+                メインから選びなおす
+              </button>
+            )}
             <button
               type="button"
               disabled={busy || !mainId || subIds.length !== 2}
-              className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
+              className="w-full rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
               onClick={() =>
                 void run(async () => {
                   if (!mainId || subIds.length !== 2) return;
