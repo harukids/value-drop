@@ -19,7 +19,7 @@ npm install
 npm run dev
 ```
 
-5. http://localhost:3000 を開く
+5. http://localhost:3000 を開く（入室）。部屋作成は http://localhost:3000/host （`ADMIN_SECRET` の合言葉）
 
 ## ドキュメント
 
@@ -28,12 +28,7 @@ npm run dev
 
 ## いま動くもの
 
-- ホーム: 部屋作成 / コードで入室（シェル）
+- ホーム: コードで入室
+- `/host`: 合言葉つきで部屋作成
 - 型・60枚デッキ・localStorage 復帰キー
 - Supabase スキーマ
-
-## 次に作るもの
-
-1. LOBBY の実同期（入室・席順並べ替え・開始）
-2. DEALING → 1ターン（STEAL → CONFIRM → DISCARD → GAIN）
-3. 5ラウンド → 選定 → 理由 → 結果
