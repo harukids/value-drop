@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 
 const BGM_SRC = "/bgm/entry.m4a";
 const BGM_VOLUME = 0.3;
-const TEARDOWN_MS = 400;
+/** 画面遷移で一瞬アンマウントされてもつながる猶予 */
+const REMOUNT_GRACE_MS = 400;
+/** 本停止時のフェードアウト長 */
+const FADE_OUT_MS = 1400;
 
 type SharedBgm = {
   audio: HTMLAudioElement;
@@ -12,10 +15,61 @@ type SharedBgm = {
   muted: boolean;
   refCount: number;
   stopTimer: ReturnType<typeof setTimeout> | null;
+  fadeTimer: ReturnType<typeof setInterval> | null;
   interactBound: boolean;
 };
 
 let shared: SharedBgm | null = null;
+
+function clearFade(bag: SharedBgm) {
+  if (bag.fadeTimer) {
+    clearInterval(bag.fadeTimer);
+    bag.fadeTimer = null;
+  }
+}
+
+function restoreVolume(bag: SharedBgm) {
+  clearFade(bag);
+  bag.audio.volume = BGM_VOLUME;
+}
+
+function destroyShared() {
+  if (!shared) return;
+  clearFade(shared);
+  if (shared.stopTimer) {
+    clearTimeout(shared.stopTimer);
+    shared.stopTimer = null;
+  }
+  window.removeEventListener("pointerdown", onGlobalInteract);
+  window.removeEventListener("keydown", onGlobalInteract);
+  shared.audio.pause();
+  shared.audio.removeAttribute("src");
+  shared.audio.load();
+  shared = null;
+}
+
+function fadeOutAndDestroy(bag: SharedBgm) {
+  clearFade(bag);
+  if (bag.muted || bag.audio.paused || !bag.started) {
+    destroyShared();
+    return;
+  }
+
+  const startVol = bag.audio.volume;
+  const startedAt = performance.now();
+  bag.fadeTimer = setInterval(() => {
+    if (!shared || shared !== bag || shared.refCount > 0) {
+      clearFade(bag);
+      return;
+    }
+    const t = Math.min(1, (performance.now() - startedAt) / FADE_OUT_MS);
+    bag.audio.volume = startVol * (1 - t);
+    if (t >= 1) {
+      clearFade(bag);
+      destroyShared();
+    }
+  }, 40);
+}
 
 function acquireAudio(): SharedBgm {
   if (!shared) {
@@ -29,6 +83,7 @@ function acquireAudio(): SharedBgm {
       muted: false,
       refCount: 0,
       stopTimer: null,
+      fadeTimer: null,
       interactBound: false,
     };
   }
@@ -36,6 +91,7 @@ function acquireAudio(): SharedBgm {
     clearTimeout(shared.stopTimer);
     shared.stopTimer = null;
   }
+  restoreVolume(shared);
   shared.refCount += 1;
   return shared;
 }
@@ -48,19 +104,15 @@ function releaseAudio() {
   const current = shared;
   current.stopTimer = setTimeout(() => {
     if (!shared || shared.refCount > 0) return;
-    window.removeEventListener("pointerdown", onGlobalInteract);
-    window.removeEventListener("keydown", onGlobalInteract);
-    shared.audio.pause();
-    shared.audio.removeAttribute("src");
-    shared.audio.load();
-    shared = null;
-  }, TEARDOWN_MS);
+    fadeOutAndDestroy(shared);
+  }, REMOUNT_GRACE_MS);
 }
 
 function onGlobalInteract() {
   if (!shared || shared.started) return;
   shared.started = true;
   shared.audio.muted = shared.muted;
+  shared.audio.volume = BGM_VOLUME;
   void shared.audio.play().catch(() => {
     if (shared) shared.started = false;
   });
@@ -69,7 +121,7 @@ function onGlobalInteract() {
 /**
  * ホーム／ホスト／入室前／ロビー用。
  * 最初の操作で再生、ミュート可（画面をまたいでもシングルトンで継続）。
- * プレイ開始などで全インスタンスが外れると停止。
+ * プレイ開始などで全インスタンスが外れるとフェードアウトして停止。
  */
 export function EntryBgm() {
   const [muted, setMuted] = useState(() => shared?.muted ?? false);
@@ -112,6 +164,7 @@ export function EntryBgm() {
           if (!shared.started) {
             shared.started = true;
             setArmed(true);
+            shared.audio.volume = BGM_VOLUME;
             void shared.audio.play().catch(() => {
               if (shared) shared.started = false;
               setArmed(false);
