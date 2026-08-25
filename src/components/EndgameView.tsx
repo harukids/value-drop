@@ -13,6 +13,7 @@ import {
 } from "@/lib/game-actions";
 import { createBrowserClient } from "@/lib/supabase/client";
 import { downloadResultPoster, getPosterPreviewClasses } from "@/lib/result-poster";
+import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
 import type { Player, Room } from "@/lib/types";
 
 type Props = {
@@ -387,6 +388,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
   if (room.phase === "RESULT" || room.phase === "CLOSED") {
     return (
       <div className="space-y-4">
+        <InAppBrowserBanner variant="result" />
         <section className="rounded-2xl border border-line bg-panel p-4 space-y-4 shadow-[0_10px_30px_rgba(22,56,47,0.06)]">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>

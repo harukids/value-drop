@@ -7,6 +7,7 @@ import { isSupabaseConfigured, createBrowserClient } from "@/lib/supabase/client
 import { joinRoomAsGuest } from "@/lib/join-room";
 import { DECK } from "@/lib/deck";
 import { HomeEntryBg } from "@/components/HomeEntryBg";
+import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
 import { LineArtCoverBg } from "@/components/LineArtCoverBg";
 
 export default function HomePage() {
@@ -61,6 +62,8 @@ export default function HomePage() {
           枚のカードからあなたの価値観を掘り出してゆく、ゲーム方式のワークです。
         </p>
       </header>
+
+      <InAppBrowserBanner variant="entry" />
 
       {!configured && (
         <div className="rounded-xl border border-line bg-panel p-4 text-sm text-muted">

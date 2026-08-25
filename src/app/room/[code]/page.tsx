@@ -9,7 +9,9 @@ import { startAndDeal } from "@/lib/game-actions";
 import { DECK } from "@/lib/deck";
 import { PlayingView } from "@/components/PlayingView";
 import { EndgameView } from "@/components/EndgameView";
+import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
 import { LineArtCoverBg } from "@/components/LineArtCoverBg";
+import { buildInviteText } from "@/lib/in-app-browser";
 import {
   MAX_PLAYERS,
   MIN_PLAYERS,
@@ -27,11 +29,11 @@ export default function RoomPage() {
   const [joinName, setJoinName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState<"link" | "code" | null>(null);
+  const [copied, setCopied] = useState<"link" | "code" | "invite" | null>(null);
   const [loaded, setLoaded] = useState(false);
   const joiningRef = useRef(false);
 
-  async function copyText(kind: "link" | "code", text: string) {
+  async function copyText(kind: "link" | "code" | "invite", text: string) {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(kind);
@@ -250,8 +252,10 @@ export default function RoomPage() {
     }
   }
 
-  const shareUrl =
-    typeof window !== "undefined" ? `${window.location.origin}/room/${code}` : "";
+  const origin =
+    typeof window !== "undefined" ? window.location.origin : "";
+  const shareUrl = origin ? `${origin}/room/${code}` : "";
+  const homeUrl = origin || "";
 
   if (!room && !error) {
     return (
@@ -304,6 +308,8 @@ export default function RoomPage() {
             部屋 {code} ／ いま {players.length} / {MAX_PLAYERS} 人
           </p>
         </header>
+
+        <InAppBrowserBanner variant="entry" url={shareUrl || undefined} />
 
         <label className="block space-y-1.5">
           <span className="text-xs font-semibold text-mint">表示名</span>
@@ -373,6 +379,30 @@ export default function RoomPage() {
         <>
           <section className="rounded-2xl border border-line bg-panel p-4 space-y-3">
             <h2 className="text-sm font-semibold text-accent">招待</h2>
+
+            {me?.is_host && (
+              <div className="space-y-2">
+                <p className="text-xs text-muted">
+                  ZoomやLINEに貼る用。入室手順と注意文つきで一括コピーできます。
+                </p>
+                <button
+                  type="button"
+                  className="w-full rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a]"
+                  onClick={() =>
+                    void copyText(
+                      "invite",
+                      buildInviteText({
+                        roomUrl: shareUrl,
+                        homeUrl,
+                        roomCode: code,
+                      }),
+                    )
+                  }
+                >
+                  {copied === "invite" ? "コピーしました" : "招待文をコピー"}
+                </button>
+              </div>
+            )}
 
             <div className="space-y-2">
               <p className="text-xs text-muted">部屋コード</p>
