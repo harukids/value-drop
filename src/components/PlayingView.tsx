@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCard, PILLAR_LABEL } from "@/lib/deck";
 import {
   confirmSteal,
@@ -37,6 +37,8 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
   const [confirmKind, setConfirmKind] = useState<"discard" | "gain" | null>(
     null,
   );
+  const [bannerFlash, setBannerFlash] = useState(false);
+  const prevMyActionRef = useRef(false);
 
   const byId = useMemo(() => {
     const map = new Map(players.map((p) => [p.id, p]));
@@ -67,9 +69,53 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
       .filter((c) => !q || c.label.includes(q));
   }, [room.field, fieldQuery]);
 
+  const canStealSelect =
+    room.sub_state === "STEAL_SELECT" && room.current_player_id === me.id;
+  const canStealConfirm =
+    room.sub_state === "STEAL_CONFIRM" && victimId === me.id;
   const canDiscardNow =
     room.sub_state === "DISCARD" && room.current_player_id === me.id;
   const canGainNow = room.sub_state === "GAIN" && victimId === me.id;
+  const isMyAction =
+    canStealSelect || canStealConfirm || canDiscardNow || canGainNow;
+
+  /** いま操作すべき人（STEAL_CONFIRM / GAIN は隣側） */
+  const actingId =
+    room.sub_state === "STEAL_CONFIRM" || room.sub_state === "GAIN"
+      ? victimId
+      : room.current_player_id;
+
+  const myActionLabel =
+    room.sub_state === "STEAL_SELECT"
+      ? "隣から1枚選ぶ"
+      : room.sub_state === "STEAL_CONFIRM"
+        ? "OK / ダメ を選ぶ"
+        : room.sub_state === "DISCARD"
+          ? "1枚捨てる"
+          : room.sub_state === "GAIN"
+            ? "場から1枚得る"
+            : "操作する";
+
+  const waitLabel =
+    room.sub_state === "STEAL_SELECT"
+      ? `${current?.display_name ?? "手番者"}が隣から1枚選ぶ`
+      : room.sub_state === "STEAL_CONFIRM"
+        ? `${victim?.display_name ?? "隣"}が OK / ダメ を選ぶ`
+        : room.sub_state === "DISCARD"
+          ? `${current?.display_name ?? "手番者"}が1枚捨てる`
+          : room.sub_state === "GAIN"
+            ? `${victim?.display_name ?? "隣"}が場から1枚得る`
+            : room.sub_state;
+
+  useEffect(() => {
+    if (isMyAction && !prevMyActionRef.current) {
+      setBannerFlash(true);
+      const id = window.setTimeout(() => setBannerFlash(false), 1200);
+      prevMyActionRef.current = true;
+      return () => window.clearTimeout(id);
+    }
+    if (!isMyAction) prevMyActionRef.current = false;
+  }, [isMyAction]);
 
   const discardLabel = selectedDiscardId
     ? (getCard(selectedDiscardId)?.label ?? selectedDiscardId)
@@ -91,23 +137,48 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
     }
   }
 
-  const subLabel =
-    room.sub_state === "STEAL_SELECT"
-      ? `${current?.display_name ?? "手番者"}が隣から1枚選ぶ`
-      : room.sub_state === "STEAL_CONFIRM"
-        ? `${victim?.display_name ?? "隣"}が OK / ダメ を選ぶ`
-        : room.sub_state === "DISCARD"
-          ? `${current?.display_name ?? "手番者"}が1枚捨てる`
-          : room.sub_state === "GAIN"
-            ? `${victim?.display_name ?? "隣"}が場から1枚得る`
-            : room.sub_state;
+  const frameMine = "turn-frame-mine";
+  const frameWait = "turn-frame-wait";
 
   return (
     <div className="space-y-4">
-      <section className="rounded-2xl border border-line bg-panel p-4 space-y-3">
+      <div
+        className={`sticky top-0 z-20 -mx-1 rounded-2xl px-4 py-3 backdrop-blur-md ${
+          isMyAction
+            ? "turn-frame-mine bg-[rgba(42,24,48,0.92)]"
+            : "turn-frame-wait bg-[rgba(18,36,40,0.92)]"
+        } ${bannerFlash ? "turn-banner-flash" : ""}`}
+        role="status"
+        aria-live="polite"
+      >
+        {isMyAction ? (
+          <p className="text-base font-bold text-accent">
+            あなたの番：{myActionLabel}
+          </p>
+        ) : (
+          <p className="text-base font-bold text-mint">待機：{waitLabel}</p>
+        )}
+        <p className="mt-0.5 text-xs text-muted">
+          {isMyAction
+            ? "下のピンク縁のエリアを操作してください"
+            : "ミント縁は待機中です。自分の番になるとピンクに変わります"}
+        </p>
+      </div>
+
+      <section
+        className={`rounded-2xl bg-panel p-4 space-y-3 ${
+          isMyAction ? frameMine : frameWait
+        }`}
+      >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
-            <p className="text-xs font-semibold text-mint">プレイ中</p>
+            <p
+              className={`text-xs font-semibold ${
+                isMyAction ? "text-accent" : "text-mint"
+              }`}
+            >
+              プレイ中
+            </p>
             <p className="mt-1 text-sm text-muted">
               ターン進行: 各人{" "}
               {sorted
@@ -116,7 +187,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
               /5
             </p>
             <p className="mt-2 text-sm font-semibold text-foreground">
-              いま: {subLabel}
+              いま: {waitLabel}
             </p>
             <p className="mt-1 text-xs text-muted">
               ダメ使用: {room.deny_count} / {MAX_DENY}
@@ -145,31 +216,41 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         </div>
 
         <div className="flex flex-wrap gap-2">
-          {sorted.map((p) => (
-            <span
-              key={p.id}
-              className={`rounded-full px-3 py-1 text-xs ${
-                p.id === room.current_player_id
-                  ? "bg-accent font-semibold text-[#1c2421]"
-                  : p.id === victimId && room.sub_state === "STEAL_CONFIRM"
-                    ? "card-targeted border border-accent bg-background font-semibold text-accent"
-                    : "border border-line bg-background"
-              }`}
-            >
-              {p.display_name}
-              {p.id === me.id ? "（あなた）" : ""} · 手札{p.hand.length}
-              {p.id === victimId && room.sub_state === "STEAL_CONFIRM"
-                ? " · 選択中"
-                : ""}
-            </span>
-          ))}
+          {sorted.map((p) => {
+            const isActing = p.id === actingId;
+            const isMeActing = isActing && p.id === me.id;
+            return (
+              <span
+                key={p.id}
+                className={`rounded-full px-3 py-1 text-xs ${
+                  isMeActing
+                    ? "bg-accent font-semibold text-[#1c2421]"
+                    : isActing
+                      ? "border border-mint bg-mint/15 font-semibold text-mint"
+                      : "border border-line bg-background"
+                }`}
+              >
+                {p.display_name}
+                {p.id === me.id ? "（あなた）" : ""} · 手札{p.hand.length}
+                {isActing ? " · 操作中" : ""}
+              </span>
+            );
+          })}
         </div>
       </section>
 
       {room.sub_state === "STEAL_CONFIRM" && victim && (
-        <section className="space-y-4 rounded-2xl border-2 border-accent bg-panel p-4">
+        <section
+          className={`space-y-4 rounded-2xl bg-panel p-4 ${
+            canStealConfirm ? frameMine : frameWait
+          }`}
+        >
           <div>
-            <h2 className="text-sm font-semibold text-accent">
+            <h2
+              className={`text-sm font-semibold ${
+                canStealConfirm ? "text-accent" : "text-mint"
+              }`}
+            >
               {victimId === me.id
                 ? "あなたの手札が選ばれています"
                 : `${victim.display_name} の手札が選ばれています`}
@@ -225,7 +306,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
             })}
           </div>
 
-          {victimId === me.id ? (
+          {canStealConfirm ? (
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
@@ -276,15 +357,17 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
 
       <section
         className={`space-y-3 rounded-2xl bg-panel p-4 ${
-          canDiscardNow
-            ? "border-2 border-accent shadow-[0_0_0_1px_rgba(255,143,107,0.35)]"
-            : room.sub_state === "STEAL_CONFIRM" && victimId === me.id
-              ? "border-2 border-accent/70"
-              : "border border-line"
+          canDiscardNow || canStealConfirm ? frameMine : "border border-line"
         }`}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-accent">あなたの手札</h2>
+          <h2
+            className={`text-sm font-semibold ${
+              canDiscardNow || canStealConfirm ? "text-accent" : "text-muted"
+            }`}
+          >
+            あなたの手札
+          </h2>
           {canDiscardNow && (
             <span className="card-targeted-label rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-[#16382f]">
               ここで1枚選んで捨てる
@@ -356,75 +439,77 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
             このカードを手放す…
           </button>
         )}
-        {room.sub_state === "STEAL_CONFIRM" && victimId === me.id && (
+        {canStealConfirm && (
           <p className="text-xs text-accent">
             点滅しているカードが、相手に選ばれています。
           </p>
         )}
       </section>
 
-      {room.sub_state === "STEAL_SELECT" &&
-        room.current_player_id === me.id &&
-        victim && (
-          <section className="space-y-3 rounded-2xl border-2 border-accent bg-panel p-4 shadow-[0_0_0_1px_rgba(255,143,107,0.35)]">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 className="text-sm font-semibold text-accent">
-                {victim.display_name} の手札（裏）から1枚選ぶ
-              </h2>
-              <span className="card-targeted-label rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-[#16382f]">
-                ここで選ぶ
-              </span>
-            </div>
-            <div className="flex flex-wrap gap-2 rounded-xl border border-accent/30 bg-[#14182e]/70 p-3">
-              {victim.hand.map((id, index) => {
-                const denied = (room.denied_card_ids ?? []).includes(id);
-                return (
-                  <button
-                    key={`${id}-${index}`}
-                    type="button"
-                    disabled={busy || denied}
-                    title={
-                      denied ? "この手番ですでにダメされたカード" : undefined
-                    }
-                    onClick={() =>
-                      void run(async () => {
-                        const supabase = createBrowserClient();
-                        await selectStealCard({
-                          supabase,
-                          room,
-                          players,
-                          actorId: me.id,
-                          cardId: id,
-                        });
-                      })
-                    }
-                    className={`h-[72px] w-[56px] rounded-lg border text-xs transition ${
-                      denied
-                        ? "cursor-not-allowed border-line bg-[#1a1f33] text-[#6b7390] opacity-50"
-                        : "border-[#b794ff]/50 bg-gradient-to-b from-[#2a2550] to-[#1c2240] text-[#c9d7ff] hover:border-[#ff9ad5] hover:from-[#3a2a60]"
-                    }`}
-                  >
-                    {denied ? "×" : "?"}
-                  </button>
-                );
-              })}
-            </div>
-            <p className="text-xs text-muted">
-              中身は見えません。「ダメ」された札は ×
-              になり、同じ手番では再選択できません。
-            </p>
-          </section>
-        )}
+      {canStealSelect && victim && (
+        <section
+          className={`space-y-3 rounded-2xl bg-panel p-4 ${frameMine}`}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold text-accent">
+              {victim.display_name} の手札（裏）から1枚選ぶ
+            </h2>
+            <span className="card-targeted-label rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-[#16382f]">
+              ここで選ぶ
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 rounded-xl border border-accent/30 bg-[#14182e]/70 p-3">
+            {victim.hand.map((id, index) => {
+              const denied = (room.denied_card_ids ?? []).includes(id);
+              return (
+                <button
+                  key={`${id}-${index}`}
+                  type="button"
+                  disabled={busy || denied}
+                  title={
+                    denied ? "この手番ですでにダメされたカード" : undefined
+                  }
+                  onClick={() =>
+                    void run(async () => {
+                      const supabase = createBrowserClient();
+                      await selectStealCard({
+                        supabase,
+                        room,
+                        players,
+                        actorId: me.id,
+                        cardId: id,
+                      });
+                    })
+                  }
+                  className={`h-[72px] w-[56px] rounded-lg border text-xs transition ${
+                    denied
+                      ? "cursor-not-allowed border-line bg-[#1a1f33] text-[#6b7390] opacity-50"
+                      : "border-[#b794ff]/50 bg-gradient-to-b from-[#2a2550] to-[#1c2240] text-[#c9d7ff] hover:border-[#ff9ad5] hover:from-[#3a2a60]"
+                  }`}
+                >
+                  {denied ? "×" : "?"}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-xs text-muted">
+            中身は見えません。「ダメ」された札は ×
+            になり、同じ手番では再選択できません。
+          </p>
+        </section>
+      )}
 
       <section
         className={`space-y-3 rounded-2xl bg-panel p-4 ${
-          canGainNow
-            ? "border-2 border-accent shadow-[0_0_0_1px_rgba(255,143,107,0.35)]"
-            : "border border-line"
+          canGainNow ? frameMine : "border border-line"
         }`}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-sm font-semibold text-accent">
+          <h2
+            className={`text-sm font-semibold ${
+              canGainNow ? "text-accent" : "text-muted"
+            }`}
+          >
             場のカード（{room.field.length}枚）
           </h2>
           {canGainNow && (

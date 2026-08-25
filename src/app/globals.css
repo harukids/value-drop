@@ -113,6 +113,34 @@ main {
   font-weight: 700;
 }
 
+/* 自分の操作待ち vs 待機の画面縁 */
+.turn-frame-mine {
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 0 1px rgba(255, 154, 213, 0.35);
+}
+
+.turn-frame-wait {
+  border: 2px solid rgba(126, 240, 212, 0.55);
+  box-shadow: 0 0 0 1px rgba(126, 240, 212, 0.18);
+}
+
+@keyframes turn-banner-flash {
+  0%,
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  25%,
+  75% {
+    transform: scale(1.015);
+    filter: brightness(1.18);
+  }
+}
+
+.turn-banner-flash {
+  animation: turn-banner-flash 0.55s ease-in-out 2;
+}
+
 .panel-card {
   background: var(--panel);
   border: 1px solid var(--line);
