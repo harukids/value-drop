@@ -1,59 +1,98 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 const BGM_SRC = "/bgm/entry.m4a";
 const BGM_VOLUME = 0.3;
+const TEARDOWN_MS = 400;
 
-/**
- * トップ／入室前専用。最初の操作で再生開始、ミュート可（記憶しない）。
- * アンマウント（入室後）で停止。
- */
-export function EntryBgm() {
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const startedRef = useRef(false);
-  const mutedRef = useRef(false);
-  const [muted, setMuted] = useState(false);
-  const [armed, setArmed] = useState(false);
+type SharedBgm = {
+  audio: HTMLAudioElement;
+  started: boolean;
+  muted: boolean;
+  refCount: number;
+  stopTimer: ReturnType<typeof setTimeout> | null;
+  interactBound: boolean;
+};
 
-  useEffect(() => {
-    mutedRef.current = muted;
-    const audio = audioRef.current;
-    if (audio) audio.muted = muted;
-  }, [muted]);
+let shared: SharedBgm | null = null;
 
-  useEffect(() => {
+function acquireAudio(): SharedBgm {
+  if (!shared) {
     const audio = new Audio(BGM_SRC);
     audio.loop = true;
     audio.preload = "auto";
     audio.volume = BGM_VOLUME;
-    audio.muted = mutedRef.current;
-    audioRef.current = audio;
-
-    const tryStart = () => {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      setArmed(true);
-      audio.muted = mutedRef.current;
-      void audio.play().catch(() => {
-        // 自動再生拒否など — 次の操作で再試行できるようフラグを戻す
-        startedRef.current = false;
-        setArmed(false);
-      });
+    shared = {
+      audio,
+      started: false,
+      muted: false,
+      refCount: 0,
+      stopTimer: null,
+      interactBound: false,
     };
+  }
+  if (shared.stopTimer) {
+    clearTimeout(shared.stopTimer);
+    shared.stopTimer = null;
+  }
+  shared.refCount += 1;
+  return shared;
+}
 
-    const onInteract = () => tryStart();
-    window.addEventListener("pointerdown", onInteract);
-    window.addEventListener("keydown", onInteract);
+function releaseAudio() {
+  if (!shared) return;
+  shared.refCount -= 1;
+  if (shared.refCount > 0) return;
+
+  const current = shared;
+  current.stopTimer = setTimeout(() => {
+    if (!shared || shared.refCount > 0) return;
+    window.removeEventListener("pointerdown", onGlobalInteract);
+    window.removeEventListener("keydown", onGlobalInteract);
+    shared.audio.pause();
+    shared.audio.removeAttribute("src");
+    shared.audio.load();
+    shared = null;
+  }, TEARDOWN_MS);
+}
+
+function onGlobalInteract() {
+  if (!shared || shared.started) return;
+  shared.started = true;
+  shared.audio.muted = shared.muted;
+  void shared.audio.play().catch(() => {
+    if (shared) shared.started = false;
+  });
+}
+
+/**
+ * ホーム／ホスト／入室前／ロビー用。
+ * 最初の操作で再生、ミュート可（画面をまたいでもシングルトンで継続）。
+ * プレイ開始などで全インスタンスが外れると停止。
+ */
+export function EntryBgm() {
+  const [muted, setMuted] = useState(() => shared?.muted ?? false);
+  const [armed, setArmed] = useState(() => shared?.started ?? false);
+
+  useEffect(() => {
+    const bag = acquireAudio();
+    setMuted(bag.muted);
+    setArmed(bag.started);
+    bag.audio.muted = bag.muted;
+
+    if (!bag.interactBound) {
+      window.addEventListener("pointerdown", onGlobalInteract);
+      window.addEventListener("keydown", onGlobalInteract);
+      bag.interactBound = true;
+    }
+
+    const syncArmed = () => setArmed(Boolean(shared?.started));
+    const id = window.setInterval(syncArmed, 400);
 
     return () => {
-      window.removeEventListener("pointerdown", onInteract);
-      window.removeEventListener("keydown", onInteract);
-      audio.pause();
-      audio.removeAttribute("src");
-      audio.load();
-      audioRef.current = null;
-      startedRef.current = false;
+      window.clearInterval(id);
+      releaseAudio();
     };
   }, []);
 
@@ -65,20 +104,19 @@ export function EntryBgm() {
         aria-pressed={muted}
         aria-label={muted ? "BGMをオンにする" : "BGMをミュートする"}
         onClick={() => {
-          setMuted((m) => {
-            const next = !m;
-            mutedRef.current = next;
-            if (audioRef.current) audioRef.current.muted = next;
-            return next;
-          });
-          const audio = audioRef.current;
-          if (!audio || startedRef.current) return;
-          startedRef.current = true;
-          setArmed(true);
-          void audio.play().catch(() => {
-            startedRef.current = false;
-            setArmed(false);
-          });
+          if (!shared) return;
+          const next = !shared.muted;
+          shared.muted = next;
+          shared.audio.muted = next;
+          setMuted(next);
+          if (!shared.started) {
+            shared.started = true;
+            setArmed(true);
+            void shared.audio.play().catch(() => {
+              if (shared) shared.started = false;
+              setArmed(false);
+            });
+          }
         }}
       >
         {muted ? "♪ ミュート中" : armed ? "♪ BGM" : "♪ タップでBGM"}

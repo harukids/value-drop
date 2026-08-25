@@ -361,6 +361,7 @@ export default function RoomPage() {
       {room.phase === "LOBBY" && (
         <LineArtCoverBg denser pattern="scatterUltra" />
       )}
+      {room.phase === "LOBBY" && <EntryBgm />}
       <main className="relative z-[1] mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-4 py-8">
       <header className="space-y-1">
         <p className="text-xs font-semibold tracking-wide text-mint">部屋 {code}</p>
