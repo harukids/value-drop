@@ -8,6 +8,7 @@ import { joinRoomAsGuest } from "@/lib/join-room";
 import { DECK } from "@/lib/deck";
 import { HomeEntryBg } from "@/components/HomeEntryBg";
 import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
+import { EntryBgm } from "@/components/EntryBgm";
 import { LineArtCoverBg } from "@/components/LineArtCoverBg";
 
 export default function HomePage() {
@@ -46,6 +47,7 @@ export default function HomePage() {
       <Suspense fallback={<LineArtCoverBg pattern="scatterUltra" />}>
         <HomeEntryBg />
       </Suspense>
+      <EntryBgm />
       <main className="relative z-[1] mx-auto flex w-full max-w-lg flex-1 flex-col justify-center gap-8 px-4 py-12">
       <header className="space-y-2">
         <p className="text-sm font-semibold tracking-wide text-mint">
