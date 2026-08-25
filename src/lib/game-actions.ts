@@ -377,16 +377,32 @@ export async function submitReason({
     .eq("id", actorId);
   if (error) throw error;
 
-  const othersReady = players
-    .filter((p) => p.id !== actorId)
-    .every((p) => p.ready_writing);
-  if (othersReady) {
-    const { error: roomError } = await supabase
-      .from("rooms")
-      .update({ phase: "RESULT" })
-      .eq("code", room.code);
-    if (roomError) throw roomError;
-  }
+  // クライアントの古い players ではなく DB 最新で判定（同時送信の取りこぼし防止）
+  await ensureResultPhase({ supabase, roomCode: room.code });
+}
+
+/** 全員の選定＋理由が揃っていれば RESULT へ。同時送信や取りこぼしの回収にも使う */
+export async function ensureResultPhase({
+  supabase,
+  roomCode,
+}: {
+  supabase: SupabaseClient;
+  roomCode: string;
+}) {
+  const { data: latest, error } = await supabase
+    .from("players")
+    .select("ready_selecting, ready_writing")
+    .eq("room_code", roomCode);
+  if (error) throw error;
+  if (!latest?.length) return;
+  if (!latest.every((p) => p.ready_selecting && p.ready_writing)) return;
+
+  const { error: roomError } = await supabase
+    .from("rooms")
+    .update({ phase: "RESULT" })
+    .eq("code", roomCode)
+    .in("phase", ["SELECTING", "WRITING"]);
+  if (roomError) throw roomError;
 }
 
 export async function closeRoom({

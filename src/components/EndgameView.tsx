@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { getCard, PILLAR_LABEL } from "@/lib/deck";
 import {
   closeRoom,
+  ensureResultPhase,
   formatResultsText,
   revertSelection,
   saveStatement,
@@ -40,11 +41,44 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     setStatement(me.statement ?? "");
   }, [me.statement]);
 
+  // sub_card_ids は毎 refresh で新しい配列参照になるため、中身のキーで同期する。
+  // 参照を依存にすると他者が確定しただけで自分の未送信ドラフトが消える。
+  const serverSubKey = (me.sub_card_ids ?? []).join("\0");
   useEffect(() => {
     setMainId(me.main_card_id);
     setSubIds(me.sub_card_ids ?? []);
     setReason(me.reason ?? "");
-  }, [me.id, me.main_card_id, me.sub_card_ids, me.reason, me.ready_selecting]);
+  }, [me.id, me.main_card_id, serverSubKey, me.reason, me.ready_selecting]);
+
+  // 全員完了なのに RESULT に進んでいない部屋を回収（同時送信の取りこぼし）
+  const allEndgameDone = useMemo(
+    () =>
+      players.length > 0 &&
+      players.every((p) => p.ready_selecting && p.ready_writing),
+    [players],
+  );
+  const advancingRef = useRef(false);
+  useEffect(() => {
+    if (room.phase !== "SELECTING" && room.phase !== "WRITING") {
+      advancingRef.current = false;
+      return;
+    }
+    if (!allEndgameDone || advancingRef.current) return;
+    advancingRef.current = true;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const supabase = createBrowserClient();
+        await ensureResultPhase({ supabase, roomCode: room.code });
+        if (!cancelled) await onChanged();
+      } catch {
+        if (!cancelled) advancingRef.current = false;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [allEndgameDone, room.phase, room.code, onChanged]);
 
   useEffect(() => {
     if (cooldownUntil <= Date.now()) return;
