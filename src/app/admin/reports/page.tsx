@@ -1,9 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { getCard, PILLAR_LABEL } from "@/lib/deck";
 import { MAX_TEAM_GROUPS } from "@/lib/team-report";
+import { normalizeRoomCode } from "@/lib/room-code";
+import {
+  clearStoredAdminSecret,
+  persistAdminSecret,
+  readStoredAdminSecret,
+} from "@/lib/admin-secret-storage";
 import type { Player, Room } from "@/lib/types";
 
 type CreatedReport = {
@@ -14,14 +21,26 @@ type CreatedReport = {
   sharePath: string;
 };
 
-const SECRET_KEY = "vd-admin-secret";
-
 export default function AdminReportsPage() {
-  const [secret, setSecret] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem(SECRET_KEY) ?? "";
-  });
+  return (
+    <Suspense
+      fallback={
+        <main className="relative z-[1] mx-auto flex max-w-md flex-1 items-center justify-center px-4 py-12 text-sm text-muted">
+          読み込み中…
+        </main>
+      }
+    >
+      <AdminReportsInner />
+    </Suspense>
+  );
+}
+
+function AdminReportsInner() {
+  const searchParams = useSearchParams();
+  const roomFromQuery = normalizeRoomCode(searchParams.get("room") ?? "");
+  const [secret, setSecret] = useState(() => readStoredAdminSecret());
   const [authed, setAuthed] = useState(false);
+  const [bootstrapping, setBootstrapping] = useState(true);
   const [roomCode, setRoomCode] = useState("");
   const [room, setRoom] = useState<Room | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -39,19 +58,82 @@ export default function AdminReportsPage() {
     [players],
   );
 
+  async function verifySecret(value: string) {
+    const res = await fetch("/api/admin/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: value }),
+    });
+    const data = (await res.json()) as { error?: string };
+    if (!res.ok) throw new Error(data.error || "認証に失敗しました");
+  }
+
+  async function fetchRoom(secretValue: string, codeValue: string) {
+    const res = await fetch("/api/admin/room", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ secret: secretValue, roomCode: codeValue }),
+    });
+    const data = (await res.json()) as {
+      room?: Room;
+      players?: Player[];
+      error?: string;
+    };
+    if (!res.ok) throw new Error(data.error || "読み込みに失敗しました");
+    setRoom(data.room ?? null);
+    const list = data.players ?? [];
+    setPlayers(list);
+    const next: Record<string, number> = {};
+    for (const p of list) next[p.id] = 1;
+    setAssignments(next);
+  }
+
+  useEffect(() => {
+    if (roomFromQuery) setRoomCode(roomFromQuery);
+    const stored = readStoredAdminSecret();
+    if (!stored) {
+      setBootstrapping(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        await verifySecret(stored);
+        if (cancelled) return;
+        persistAdminSecret(stored);
+        setSecret(stored);
+        setAuthed(true);
+        if (roomFromQuery) {
+          setReports([]);
+          await fetchRoom(stored, roomFromQuery);
+        }
+      } catch {
+        clearStoredAdminSecret();
+        if (!cancelled) {
+          setAuthed(false);
+          setSecret("");
+        }
+      } finally {
+        if (!cancelled) setBootstrapping(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [roomFromQuery]);
+
   async function verify() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/admin/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret }),
-      });
-      const data = (await res.json()) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "認証に失敗しました");
-      sessionStorage.setItem(SECRET_KEY, secret);
+      await verifySecret(secret);
+      persistAdminSecret(secret);
       setAuthed(true);
+      const code = normalizeRoomCode(roomCode);
+      if (code) {
+        setReports([]);
+        await fetchRoom(secret, code);
+      }
     } catch (e) {
       setAuthed(false);
       setError(e instanceof Error ? e.message : "認証に失敗しました");
@@ -65,23 +147,7 @@ export default function AdminReportsPage() {
     setError(null);
     setReports([]);
     try {
-      const res = await fetch("/api/admin/room", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ secret, roomCode }),
-      });
-      const data = (await res.json()) as {
-        room?: Room;
-        players?: Player[];
-        error?: string;
-      };
-      if (!res.ok) throw new Error(data.error || "読み込みに失敗しました");
-      setRoom(data.room ?? null);
-      const list = data.players ?? [];
-      setPlayers(list);
-      const next: Record<string, number> = {};
-      for (const p of list) next[p.id] = 1;
-      setAssignments(next);
+      await fetchRoom(secret, roomCode);
     } catch (e) {
       setRoom(null);
       setPlayers([]);
@@ -124,6 +190,14 @@ export default function AdminReportsPage() {
     }
   }
 
+  if (bootstrapping) {
+    return (
+      <main className="relative z-[1] mx-auto flex max-w-md flex-1 items-center justify-center px-4 py-12 text-sm text-muted">
+        読み込み中…
+      </main>
+    );
+  }
+
   if (!authed) {
     return (
       <main className="relative z-[1] mx-auto flex w-full max-w-md flex-1 flex-col justify-center gap-4 px-4 py-12">
@@ -131,6 +205,9 @@ export default function AdminReportsPage() {
         <p className="text-sm text-muted">
           合言葉は、この管理画面に入るためのあなた専用のパスワードです。参加者には教えません。
         </p>
+        {roomCode ? (
+          <p className="text-sm text-mint">部屋 {roomCode} を開きます。</p>
+        ) : null}
         <label className="block space-y-1">
           <span className="text-sm text-muted">合言葉</span>
           <input

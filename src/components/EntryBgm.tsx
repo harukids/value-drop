@@ -10,7 +10,7 @@ const REMOUNT_GRACE_MS = 400;
 const FADE_OUT_MS = 1400;
 
 type SharedBgm = {
-  audio: HTMLAudioElement;
+  audio: HTMLAudioElement | null;
   started: boolean;
   muted: boolean;
   refCount: number;
@@ -30,7 +30,7 @@ function clearFade(bag: SharedBgm) {
 
 function restoreVolume(bag: SharedBgm) {
   clearFade(bag);
-  bag.audio.volume = BGM_VOLUME;
+  if (bag.audio) bag.audio.volume = BGM_VOLUME;
 }
 
 function destroyShared() {
@@ -42,15 +42,17 @@ function destroyShared() {
   }
   window.removeEventListener("pointerdown", onGlobalInteract);
   window.removeEventListener("keydown", onGlobalInteract);
-  shared.audio.pause();
-  shared.audio.removeAttribute("src");
-  shared.audio.load();
+  if (shared.audio) {
+    shared.audio.pause();
+    shared.audio.removeAttribute("src");
+    shared.audio.load();
+  }
   shared = null;
 }
 
 function fadeOutAndDestroy(bag: SharedBgm) {
   clearFade(bag);
-  if (bag.muted || bag.audio.paused || !bag.started) {
+  if (!bag.audio || bag.muted || bag.audio.paused || !bag.started) {
     destroyShared();
     return;
   }
@@ -58,7 +60,7 @@ function fadeOutAndDestroy(bag: SharedBgm) {
   const startVol = bag.audio.volume;
   const startedAt = performance.now();
   bag.fadeTimer = setInterval(() => {
-    if (!shared || shared !== bag || shared.refCount > 0) {
+    if (!shared || shared !== bag || shared.refCount > 0 || !bag.audio) {
       clearFade(bag);
       return;
     }
@@ -71,14 +73,37 @@ function fadeOutAndDestroy(bag: SharedBgm) {
   }, 40);
 }
 
-function acquireAudio(): SharedBgm {
-  if (!shared) {
-    const audio = new Audio(BGM_SRC);
+/** 再生する瞬間まで m4a を取りに行かない */
+function ensureAudio(bag: SharedBgm): HTMLAudioElement {
+  if (!bag.audio) {
+    const audio = new Audio();
+    audio.preload = "none";
     audio.loop = true;
-    audio.preload = "auto";
     audio.volume = BGM_VOLUME;
+    audio.muted = bag.muted;
+    bag.audio = audio;
+  }
+  if (!bag.audio.src) {
+    bag.audio.src = BGM_SRC;
+  }
+  return bag.audio;
+}
+
+function startPlayback(bag: SharedBgm) {
+  if (bag.started) return;
+  bag.started = true;
+  const audio = ensureAudio(bag);
+  audio.muted = bag.muted;
+  audio.volume = BGM_VOLUME;
+  void audio.play().catch(() => {
+    if (shared) shared.started = false;
+  });
+}
+
+function acquireShared(): SharedBgm {
+  if (!shared) {
     shared = {
-      audio,
+      audio: null,
       started: false,
       muted: false,
       refCount: 0,
@@ -108,30 +133,29 @@ function releaseAudio() {
   }, REMOUNT_GRACE_MS);
 }
 
-function onGlobalInteract() {
+function onGlobalInteract(e: Event) {
   if (!shared || shared.started) return;
-  shared.started = true;
-  shared.audio.muted = shared.muted;
-  shared.audio.volume = BGM_VOLUME;
-  void shared.audio.play().catch(() => {
-    if (shared) shared.started = false;
-  });
+  const target = e.target;
+  if (target instanceof Element && target.closest("[data-bgm-control]")) {
+    return;
+  }
+  startPlayback(shared);
 }
 
 /**
  * ホーム／ホスト／入室前／ロビー用。
  * 最初の操作で再生、ミュート可（画面をまたいでもシングルトンで継続）。
  * プレイ開始などで全インスタンスが外れるとフェードアウトして停止。
+ * 音ファイルは操作があるまで取得しない。
  */
 export function EntryBgm() {
-  const [muted, setMuted] = useState(() => shared?.muted ?? false);
-  const [armed, setArmed] = useState(() => shared?.started ?? false);
+  const [muted, setMuted] = useState(false);
+  const [armed, setArmed] = useState(false);
 
   useEffect(() => {
-    const bag = acquireAudio();
+    const bag = acquireShared();
     setMuted(bag.muted);
     setArmed(bag.started);
-    bag.audio.muted = bag.muted;
 
     if (!bag.interactBound) {
       window.addEventListener("pointerdown", onGlobalInteract);
@@ -149,7 +173,10 @@ export function EntryBgm() {
   }, []);
 
   return (
-    <div className="pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-1.5">
+    <div
+      data-bgm-control
+      className="pointer-events-none fixed bottom-4 right-4 z-40 flex flex-col items-end gap-1.5"
+    >
       <button
         type="button"
         className="pointer-events-auto rounded-full border border-line bg-panel/95 px-3.5 py-2 text-sm font-semibold text-foreground shadow-lg backdrop-blur-md"
@@ -157,19 +184,15 @@ export function EntryBgm() {
         aria-label={muted ? "BGMをオンにする" : "BGMをミュートする"}
         onClick={() => {
           if (!shared) return;
+          if (!shared.started) {
+            startPlayback(shared);
+            setArmed(true);
+            return;
+          }
           const next = !shared.muted;
           shared.muted = next;
-          shared.audio.muted = next;
+          if (shared.audio) shared.audio.muted = next;
           setMuted(next);
-          if (!shared.started) {
-            shared.started = true;
-            setArmed(true);
-            shared.audio.volume = BGM_VOLUME;
-            void shared.audio.play().catch(() => {
-              if (shared) shared.started = false;
-              setArmed(false);
-            });
-          }
         }}
       >
         {muted ? "♪ ミュート中" : armed ? "♪ BGM" : "♪ タップでBGM"}

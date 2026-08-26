@@ -3,9 +3,14 @@ import {
   type WallpaperPatternId,
 } from "@/lib/line-art-wallpapers";
 
-const CACHE = "20260822m";
+const CACHE = "20260827a";
 const ASPECT_W = 9;
 const ASPECT_H = 16;
+
+/** 本番エントリーは 60 枚ばら撒きを 1 枚の壁紙に焼いてある */
+const BAKED_WALLPAPERS: Partial<Record<WallpaperPatternId, string>> = {
+  scatterUltra: "/illustrations/wallpapers/scatter-ultra.webp",
+};
 
 type LineArtCoverBgProps = {
   denser?: boolean;
@@ -19,6 +24,7 @@ export function LineArtCoverBg({
   pattern = "scatter",
   mode = "page",
 }: LineArtCoverBgProps) {
+  const baked = BAKED_WALLPAPERS[pattern];
   const boost = denser ? 1.15 : 1;
   const placements = WALLPAPER_PATTERNS[pattern].placements;
 
@@ -42,24 +48,36 @@ export function LineArtCoverBg({
           height: "auto",
         }}
       >
-        {placements.map((p, i) => (
+        {baked ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            key={`${p.id}-${i}`}
-            src={`/illustrations/v3/${p.id}.svg?v=${CACHE}`}
+            src={`${baked}?v=${CACHE}`}
             alt=""
-            className="absolute select-none"
-            style={{
-              left: `${p.x}%`,
-              top: `${p.y}%`,
-              width: `${p.size}%`,
-              height: "auto",
-              opacity: Math.min(0.22, p.opacity * boost),
-              transform: `rotate(${p.rotate}deg)`,
-            }}
+            className="absolute inset-0 h-full w-full select-none object-cover"
+            style={{ opacity: denser ? 0.13 : 0.11 }}
             draggable={false}
+            decoding="async"
           />
-        ))}
+        ) : (
+          placements.map((p, i) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              key={`${p.id}-${i}`}
+              src={`/illustrations/v3/${p.id}.svg?v=${CACHE}`}
+              alt=""
+              className="absolute select-none"
+              style={{
+                left: `${p.x}%`,
+                top: `${p.y}%`,
+                width: `${p.size}%`,
+                height: "auto",
+                opacity: Math.min(0.22, p.opacity * boost),
+                transform: `rotate(${p.rotate}deg)`,
+              }}
+              draggable={false}
+            />
+          ))
+        )}
       </div>
     </div>
   );

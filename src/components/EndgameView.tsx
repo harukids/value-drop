@@ -397,21 +397,38 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                 終わったらこのタブを閉じて大丈夫です。同じブラウザなら、部屋リンクをもう一度開けば席に戻れます（別の端末・シークレットでは別人扱いになります）。
               </p>
             </div>
-            <button
-              type="button"
-              className="rounded-xl border border-line px-3 py-2 text-sm"
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(formatResultsText(sorted));
-                  setCopied(true);
-                  window.setTimeout(() => setCopied(false), 2000);
-                } catch {
-                  setError("コピーに失敗しました");
-                }
-              }}
-            >
-              {copied ? "コピーしました" : "全員分をテキストコピー"}
-            </button>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded-xl border border-line px-3 py-2 text-sm"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(formatResultsText(sorted));
+                    setCopied(true);
+                    window.setTimeout(() => setCopied(false), 2000);
+                  } catch {
+                    setError("コピーに失敗しました");
+                  }
+                }}
+              >
+                {copied ? "コピーしました" : "全員分をテキストコピー"}
+              </button>
+              {me.is_host ? (
+                <button
+                  type="button"
+                  className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-3 py-2 text-sm font-bold text-[#12122a]"
+                  onClick={() => {
+                    window.open(
+                      `/admin/reports?room=${encodeURIComponent(room.code)}`,
+                      "vd-team-report",
+                      "width=780,height=960,scrollbars=yes,resizable=yes",
+                    );
+                  }}
+                >
+                  チームレポートを作る
+                </button>
+              ) : null}
+            </div>
           </div>
 
           {/* 自分のポスタープレビュー風（柱で配色） */}

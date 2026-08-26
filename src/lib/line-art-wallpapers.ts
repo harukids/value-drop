@@ -58,7 +58,7 @@ export const WALLPAPER_PATTERNS: Record<
 
   scatterUltra: {
     label: "散らし・超高密度",
-    note: "全60種。向きはランダム、位置は均等グリッド＋微小ずれ。",
+    note: "全60種。向きはランダム、位置は均等グリッド＋微小ずれ。本番は scripts/bake-entry-wallpaper.mjs で 1 枚の壁紙に焼く。",
     placements: buildUltraScatter(),
   },
 

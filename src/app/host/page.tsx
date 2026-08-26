@@ -6,18 +6,18 @@ import Link from "next/link";
 import { generateRoomCode } from "@/lib/room-code";
 import { isSupabaseConfigured, createBrowserClient } from "@/lib/supabase/client";
 import { savePlayerId } from "@/lib/player-storage";
+import {
+  persistAdminSecret,
+  readStoredAdminSecret,
+  clearStoredAdminSecret,
+} from "@/lib/admin-secret-storage";
 import { HomeEntryBg } from "@/components/HomeEntryBg";
 import { EntryBgm } from "@/components/EntryBgm";
 import { LineArtCoverBg } from "@/components/LineArtCoverBg";
 
-const SECRET_KEY = "vd-host-secret";
-
 export default function HostPage() {
   const router = useRouter();
-  const [secret, setSecret] = useState(() => {
-    if (typeof window === "undefined") return "";
-    return sessionStorage.getItem(SECRET_KEY) ?? "";
-  });
+  const [secret, setSecret] = useState(() => readStoredAdminSecret());
   const [authed, setAuthed] = useState(false);
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -37,15 +37,18 @@ export default function HostPage() {
   }
 
   useEffect(() => {
-    const stored = sessionStorage.getItem(SECRET_KEY);
+    const stored = readStoredAdminSecret();
     if (!stored) return;
     let cancelled = false;
     void (async () => {
       try {
         await verifySecret(stored);
-        if (!cancelled) setAuthed(true);
+        if (!cancelled) {
+          persistAdminSecret(stored);
+          setAuthed(true);
+        }
       } catch {
-        sessionStorage.removeItem(SECRET_KEY);
+        clearStoredAdminSecret();
         if (!cancelled) setAuthed(false);
       }
     })();
@@ -59,7 +62,7 @@ export default function HostPage() {
     setBusy(true);
     try {
       await verifySecret(secret);
-      sessionStorage.setItem(SECRET_KEY, secret);
+      persistAdminSecret(secret);
       setAuthed(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : "認証に失敗しました");
