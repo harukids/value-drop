@@ -49,6 +49,9 @@ export function DemoChrome({
         <Link href="/play-preview?view=sota" className="text-mint underline">
           プレイ（そうた）
         </Link>
+        <Link href="/play-preview?view=host" className="text-mint underline">
+          プレイ（進行役）
+        </Link>
         <Link href="/select-preview" className="text-mint underline">
           選定
         </Link>
@@ -56,7 +59,7 @@ export function DemoChrome({
           理由
         </Link>
         <Link href="/result-preview" className="text-mint underline">
-          結果（ホスト）
+          結果（進行役）
         </Link>
         <Link href="/poster-preview" className="text-mint underline">
           価値観デザイン

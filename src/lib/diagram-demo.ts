@@ -2,12 +2,13 @@ import {
   buildTeamSnapshot,
   type TeamReportPayload,
 } from "@/lib/team-report";
-import type { Player, Room } from "@/lib/types";
+import { seatedPlayers, type Player, type Room } from "@/lib/types";
 
 /** 図解と同じダミー。通信なし見本専用。 */
 export const DEMO_ROOM_CODE = "DEMO";
 
 export const DEMO_IDS = {
+  host: "demo-host",
   akari: "demo-akari",
   sota: "demo-sota",
   minato: "demo-minato",
@@ -60,13 +61,22 @@ const PLAY_FIELD = [
   "growth-13",
 ];
 
+function spectatorHost(): Player {
+  return player({
+    id: DEMO_IDS.host,
+    display_name: "進行役",
+    seat_index: null,
+    is_host: true,
+  });
+}
+
 function playPlayers(): Player[] {
   return [
+    spectatorHost(),
     player({
       id: DEMO_IDS.akari,
       display_name: "あかり",
       seat_index: 0,
-      is_host: true,
       turns_completed: 2,
       hand: ["heart-02", "heart-09", "work-13", "growth-06", "growth-08"],
     }),
@@ -97,12 +107,12 @@ function playRoom(): Room {
     pending_card_id: "work-10",
     deny_count: 1,
     denied_card_ids: ["growth-07"],
-    host_id: DEMO_IDS.akari,
+    host_id: DEMO_IDS.host,
     field: PLAY_FIELD,
   };
 }
 
-export type PlayView = "akari" | "sota";
+export type PlayView = "akari" | "sota" | "host";
 
 export function getPlayConfirmDemo(view: PlayView): {
   room: Room;
@@ -111,7 +121,12 @@ export function getPlayConfirmDemo(view: PlayView): {
 } {
   const players = playPlayers();
   const room = playRoom();
-  const meId = view === "sota" ? DEMO_IDS.sota : DEMO_IDS.akari;
+  const meId =
+    view === "sota"
+      ? DEMO_IDS.sota
+      : view === "host"
+        ? DEMO_IDS.host
+        : DEMO_IDS.akari;
   const me = players.find((p) => p.id === meId)!;
   return { room, players, me };
 }
@@ -207,18 +222,19 @@ export function getWriteDemo(): {
   return { room, players, me: players[0] };
 }
 
-/** ワーク後のホスト結果。レポートと同じ3人のカード。 */
+/** ワーク後の進行役結果。3人のカードはレポートと同じ。 */
 export function getResultDemo(): {
   room: Room;
   players: Player[];
   me: Player;
 } {
+  const host = spectatorHost();
   const players = [
+    host,
     player({
       id: DEMO_IDS.akari,
       display_name: "あかり",
       seat_index: 0,
-      is_host: true,
       hand: ["heart-01", "work-13", "growth-18", "heart-03", "growth-08"],
       main_card_id: "heart-01",
       sub_card_ids: ["work-13", "growth-18"],
@@ -261,10 +277,10 @@ export function getResultDemo(): {
     pending_card_id: null,
     deny_count: 1,
     denied_card_ids: [],
-    host_id: DEMO_IDS.akari,
+    host_id: DEMO_IDS.host,
     field: PLAY_FIELD,
   };
-  return { room, players, me: players[0] };
+  return { room, players, me: host };
 }
 
 /** 図解 shots/report.jpg と同じ構成。終わったあとのお土産。 */
@@ -274,7 +290,11 @@ export function getReportDemo(): TeamReportPayload {
     id: "demo-report",
     roomCode: DEMO_ROOM_CODE,
     groupLabel: "チーム1",
-    snapshot: buildTeamSnapshot(DEMO_ROOM_CODE, "チーム1", players),
+    snapshot: buildTeamSnapshot(
+      DEMO_ROOM_CODE,
+      "チーム1",
+      seatedPlayers(players),
+    ),
     analysis:
       "このチームは心・感情のカードが多く、愛や自由を軸にした対話が起きやすい傾向がある。気持ちや関係の話が先に出やすく、チームの空気をつくる力が強い。仕事・成果では影響力が入っており、成果や広がりを見る視点も持っている。成長・関係のカードは少なめなので、これから探究や成長にも目を向けると、いまの強みを保ったまま対話のバランスが取りやすくなるかもしれない。",
     createdAt: "2026-08-24T00:00:00.000Z",

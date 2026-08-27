@@ -8,8 +8,8 @@ export default function ResultPreviewPage() {
   const { room, players, me } = getResultDemo();
   return (
     <DemoChrome
-      title="結果見本（ホスト）"
-      note="ワーク後のホスト画面です。3人の言葉が一覧になり、ポスター保存とチームレポートが同じ場所にあります。"
+      title="結果見本（進行役）"
+      note="席に座らない進行役の画面です。自分のポスターはなく、3人の言葉とチームレポートがあります。"
     >
       <EndgameView
         room={room}

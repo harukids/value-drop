@@ -9,14 +9,19 @@ import { getPlayConfirmDemo, type PlayView } from "@/lib/diagram-demo";
 function PlayPreviewInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const raw = searchParams.get("view");
   const view: PlayView =
-    searchParams.get("view") === "sota" ? "sota" : "akari";
+    raw === "sota" ? "sota" : raw === "host" ? "host" : "akari";
   const { room, players, me } = getPlayConfirmDemo(view);
 
   return (
     <DemoChrome
       title="プレイ見本"
-      note="同じ手番の2視点です。あかりにはまだ裏、そうたには表と OK／ダメ。"
+      note={
+        view === "host"
+          ? "進行役の視点です。手札はなく、いま誰が操作しているかだけ見えます。"
+          : "同じ手番の2視点です。あかりにはまだ裏、そうたには表と OK／ダメ。"
+      }
       extra={
         <div className="flex flex-wrap gap-2 pt-1">
           <button
@@ -40,6 +45,17 @@ function PlayPreviewInner() {
             onClick={() => router.replace("/play-preview?view=sota")}
           >
             そうたの視点
+          </button>
+          <button
+            type="button"
+            className={`rounded-xl px-3 py-1.5 text-sm font-semibold ${
+              view === "host"
+                ? "bg-accent text-[#16382f]"
+                : "border border-line text-muted"
+            }`}
+            onClick={() => router.replace("/play-preview?view=host")}
+          >
+            進行役の視点
           </button>
         </div>
       }
