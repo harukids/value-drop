@@ -1,5 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { MAX_PLAYERS } from "@/lib/types";
+import { MAX_PLAYERS, seatedPlayers } from "@/lib/types";
 import { savePlayerId } from "@/lib/player-storage";
 
 export async function joinRoomAsGuest(
@@ -9,7 +9,7 @@ export async function joinRoomAsGuest(
 ): Promise<{ playerId: string; displayName: string }> {
   const { data: room, error: roomError } = await supabase
     .from("rooms")
-    .select("code, phase")
+    .select("code, phase, seat_order")
     .eq("code", code)
     .maybeSingle();
   if (roomError) throw roomError;
@@ -20,16 +20,18 @@ export async function joinRoomAsGuest(
 
   const { data: playersNow, error: listError } = await supabase
     .from("players")
-    .select("id")
+    .select("id, seat_index")
     .eq("room_code", code);
   if (listError) throw listError;
-  if ((playersNow?.length ?? 0) >= MAX_PLAYERS) {
+  const seatedCount = seatedPlayers(playersNow ?? []).length;
+  if (seatedCount >= MAX_PLAYERS) {
     throw new Error(`この部屋は満員です（上限${MAX_PLAYERS}人）`);
   }
 
   const playerId = crypto.randomUUID();
   const name = displayName.trim() || "ゲスト";
-  const seatIndex = playersNow?.length ?? 0;
+  const seatIndex = seatedCount;
+  const existingOrder = Array.isArray(room.seat_order) ? room.seat_order : [];
 
   const { error: playerError } = await supabase.from("players").insert({
     id: playerId,
@@ -41,7 +43,7 @@ export async function joinRoomAsGuest(
   });
   if (playerError) throw playerError;
 
-  const seatOrder = [...(playersNow?.map((p) => p.id) ?? []), playerId];
+  const seatOrder = [...existingOrder, playerId];
   const { error: seatError } = await supabase
     .from("rooms")
     .update({ seat_order: seatOrder })

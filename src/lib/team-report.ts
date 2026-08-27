@@ -22,6 +22,15 @@ export type TeamSnapshot = {
   pillarAll: Record<Pillar, number>;
 };
 
+export type TeamReportPayload = {
+  id: string;
+  roomCode: string;
+  groupLabel: string;
+  snapshot: TeamSnapshot;
+  analysis: string;
+  createdAt: string;
+};
+
 export function emptyPillarCounts(): Record<Pillar, number> {
   return { heart: 0, work: 0, growth: 0 };
 }

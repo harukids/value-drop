@@ -61,3 +61,30 @@ export const RECOMMENDED_MAX = 5;
 export const TURNS_PER_PLAYER = 5;
 export const MAX_DENY = 4;
 export const HAND_SIZE = 5;
+
+/** 席に座っている人。進行役ホストは seat_index が null */
+export function isSeatedPlayer(
+  player: Pick<Player, "seat_index">,
+): boolean {
+  return player.seat_index != null;
+}
+
+export function seatedPlayers<T extends Pick<Player, "seat_index">>(
+  players: T[],
+): T[] {
+  return players.filter(isSeatedPlayer);
+}
+
+export function seatedPlayersInOrder(
+  players: Player[],
+  seatOrder: string[],
+): Player[] {
+  const byId = new Map(players.map((p) => [p.id, p]));
+  const fromOrder = seatOrder
+    .map((id) => byId.get(id))
+    .filter((p): p is Player => p != null && isSeatedPlayer(p));
+  if (fromOrder.length > 0) return fromOrder;
+  return seatedPlayers(players).sort(
+    (a, b) => (a.seat_index ?? 0) - (b.seat_index ?? 0),
+  );
+}

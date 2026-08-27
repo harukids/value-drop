@@ -14,20 +14,23 @@ import {
 import { createBrowserClient } from "@/lib/supabase/client";
 import { downloadResultPoster, getPosterPreviewClasses } from "@/lib/result-poster";
 import { InAppBrowserBanner } from "@/components/InAppBrowserBanner";
-import type { Player, Room } from "@/lib/types";
+import { isSeatedPlayer, seatedPlayers, type Player, type Room } from "@/lib/types";
 
 type Props = {
   room: Room;
   players: Player[];
   me: Player;
   onChanged: () => Promise<void>;
+  /** 通信なし見本。操作は部屋に反映しない */
+  demo?: boolean;
 };
 
 const STATEMENT_COOLDOWN_MS = 5000;
 
-export function EndgameView({ room, players, me, onChanged }: Props) {
+export function EndgameView({ room, players, me, onChanged, demo = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [demoHint, setDemoHint] = useState<string | null>(null);
   const [mainId, setMainId] = useState<string | null>(me.main_card_id);
   const [subIds, setSubIds] = useState<string[]>(me.sub_card_ids ?? []);
   const [reason, setReason] = useState(me.reason ?? "");
@@ -51,15 +54,18 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     setReason(me.reason ?? "");
   }, [me.id, me.main_card_id, serverSubKey, me.reason, me.ready_selecting]);
 
+  const spectating = !isSeatedPlayer(me);
+
   // 全員完了なのに RESULT に進んでいない部屋を回収（同時送信の取りこぼし）
-  const allEndgameDone = useMemo(
-    () =>
-      players.length > 0 &&
-      players.every((p) => p.ready_selecting && p.ready_writing),
-    [players],
-  );
+  const allEndgameDone = useMemo(() => {
+    const seated = seatedPlayers(players);
+    return (
+      seated.length > 0 && seated.every((p) => p.ready_selecting && p.ready_writing)
+    );
+  }, [players]);
   const advancingRef = useRef(false);
   useEffect(() => {
+    if (demo) return;
     if (room.phase !== "SELECTING" && room.phase !== "WRITING") {
       advancingRef.current = false;
       return;
@@ -79,7 +85,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [allEndgameDone, room.phase, room.code, onChanged]);
+  }, [demo, allEndgameDone, room.phase, room.code, onChanged]);
 
   useEffect(() => {
     if (cooldownUntil <= Date.now()) return;
@@ -100,7 +106,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
 
   const sorted = useMemo(
     () =>
-      [...players].sort((a, b) => {
+      seatedPlayers(players).sort((a, b) => {
         const ai = a.seat_index ?? 999;
         const bi = b.seat_index ?? 999;
         return ai - bi;
@@ -109,6 +115,10 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
   );
 
   async function run(action: () => Promise<void>) {
+    if (demo) {
+      setDemoHint("見本です。部屋には反映しません。");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -122,6 +132,10 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
   }
 
   async function generateStatementFor(target: Player) {
+    if (demo) {
+      setDemoHint("見本です。生成AIの API は呼びません。");
+      return;
+    }
     if (!canGenerateFor(target)) return;
     const targetReason =
       target.id === me.id ? (me.reason ?? reason).trim() : (target.reason ?? "").trim();
@@ -167,6 +181,41 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
     const stillWriting = sorted.filter(
       (p) => p.ready_selecting && !p.ready_writing,
     ).length;
+
+    if (spectating) {
+      return (
+        <div className="space-y-4">
+          <section className="rounded-2xl border border-line bg-panel p-4 space-y-3">
+            <h2 className="text-sm font-semibold text-mint">進行役</h2>
+            <p className="text-sm text-muted">
+              席には座っていません。参加者の選定と理由が揃うと結果へ進みます。
+            </p>
+            <ul className="space-y-2">
+              {sorted.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 rounded-xl bg-background px-3 py-2 text-sm"
+                >
+                  <span className="font-semibold">{p.display_name}</span>
+                  <span className="text-xs text-muted">
+                    {!p.ready_selecting
+                      ? "選定中"
+                      : !p.ready_writing
+                        ? "理由を記入中"
+                        : "完了"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {stillSelecting === 0 && stillWriting === 0 && (
+              <p className="text-sm text-mint">全員の入力が揃うと結果へ進みます…</p>
+            )}
+          </section>
+          {demoHint && <p className="text-sm text-mint">{demoHint}</p>}
+          {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
+        </div>
+      );
+    }
 
     if (!me.ready_selecting) {
       const mainLabel = mainId ? getCard(mainId)?.label : null;
@@ -283,6 +332,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
               この3枚で確定する
             </button>
           </section>
+          {demoHint && <p className="text-sm text-mint">{demoHint}</p>}
           {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
         </div>
       );
@@ -355,6 +405,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
               </div>
             </div>
           </section>
+          {demoHint && <p className="text-sm text-mint">{demoHint}</p>}
           {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
         </div>
       );
@@ -380,6 +431,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
             <p className="text-sm text-mint">全員の入力が揃うと結果へ進みます…</p>
           )}
         </section>
+        {demoHint && <p className="text-sm text-mint">{demoHint}</p>}
         {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
       </div>
     );
@@ -394,7 +446,9 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
             <div>
               <h2 className="text-sm font-semibold text-mint">結果</h2>
               <p className="mt-1 text-xs text-muted">
-                終わったらこのタブを閉じて大丈夫です。同じブラウザなら、部屋リンクをもう一度開けば席に戻れます（別の端末・シークレットでは別人扱いになります）。
+                {spectating
+                  ? "進行役として全員の結果を見ています。ステートメントの生成とポスター保存ができます。"
+                  : "終わったらこのタブを閉じて大丈夫です。同じブラウザなら、部屋リンクをもう一度開けば席に戻れます（別の端末・シークレットでは別人扱いになります）。"}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -418,8 +472,11 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                   type="button"
                   className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-3 py-2 text-sm font-bold text-[#12122a]"
                   onClick={() => {
+                    const path = demo
+                      ? "/report-preview"
+                      : `/admin/reports?room=${encodeURIComponent(room.code)}`;
                     window.open(
-                      `/admin/reports?room=${encodeURIComponent(room.code)}`,
+                      path,
                       "vd-team-report",
                       "width=780,height=960,scrollbars=yes,resizable=yes",
                     );
@@ -431,7 +488,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
             </div>
           </div>
 
-          {/* 自分のポスタープレビュー風（柱で配色） */}
+          {!spectating && (
           <div
             className={`overflow-hidden rounded-2xl border p-5 backdrop-blur-md ${posterPreview.card}`}
           >
@@ -525,6 +582,7 @@ export function EndgameView({ room, players, me, onChanged }: Props) {
                 : "自分の結果を画像で保存"}
             </button>
           </div>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-2">
             {sorted.map((p) => (

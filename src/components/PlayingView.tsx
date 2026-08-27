@@ -17,16 +17,18 @@ import {
   speakReleaseScript,
 } from "@/components/SpeakThenConfirm";
 import { createBrowserClient } from "@/lib/supabase/client";
-import { MAX_DENY, type Player, type Room } from "@/lib/types";
+import { MAX_DENY, isSeatedPlayer, seatedPlayersInOrder, type Player, type Room } from "@/lib/types";
 
 type Props = {
   room: Room;
   players: Player[];
   me: Player;
   onChanged: () => Promise<void>;
+  /** 通信なし見本。操作は部屋に反映しない */
+  demo?: boolean;
 };
 
-export function PlayingView({ room, players, me, onChanged }: Props) {
+export function PlayingView({ room, players, me, onChanged, demo = false }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldQuery, setFieldQuery] = useState("");
@@ -38,6 +40,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
     null,
   );
   const [bannerFlash, setBannerFlash] = useState(false);
+  const [demoHint, setDemoHint] = useState<string | null>(null);
   const prevMyActionRef = useRef(false);
 
   const byId = useMemo(() => {
@@ -53,13 +56,11 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
     : null;
   const victim = victimId ? byId.get(victimId) : undefined;
 
-  const sorted = useMemo(() => {
-    return [...players].sort((a, b) => {
-      const ai = room.seat_order.indexOf(a.id);
-      const bi = room.seat_order.indexOf(b.id);
-      return ai - bi;
-    });
-  }, [players, room.seat_order]);
+  const spectating = !isSeatedPlayer(me);
+  const sorted = useMemo(
+    () => seatedPlayersInOrder(players, room.seat_order),
+    [players, room.seat_order],
+  );
 
   const fieldCards = useMemo(() => {
     const q = fieldQuery.trim();
@@ -125,6 +126,10 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
     : null;
 
   async function run(action: () => Promise<void>) {
+    if (demo) {
+      setDemoHint("見本です。部屋には反映しません。");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -151,7 +156,9 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         role="status"
         aria-live="polite"
       >
-        {isMyAction ? (
+        {spectating ? (
+          <p className="text-base font-bold text-mint">進行役：{waitLabel}</p>
+        ) : isMyAction ? (
           <p className="text-base font-bold text-accent">
             あなたの番：{myActionLabel}
           </p>
@@ -159,9 +166,11 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
           <p className="text-base font-bold text-mint">待機：{waitLabel}</p>
         )}
         <p className="mt-0.5 text-xs text-muted">
-          {isMyAction
-            ? "下のピンク縁のエリアを操作してください"
-            : "ミント縁は待機中です。自分の番になるとピンクに変わります"}
+          {spectating
+            ? "席には座っていません。詰まったときは手番スキップが使えます"
+            : isMyAction
+              ? "下のピンク縁のエリアを操作してください"
+              : "ミント縁は待機中です。自分の番になるとピンクに変わります"}
         </p>
       </div>
 
@@ -193,7 +202,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
               ダメ使用: {room.deny_count} / {MAX_DENY}
             </p>
           </div>
-          {me.is_host && (
+          {me.is_host && !demo && (
             <button
               type="button"
               disabled={busy}
@@ -355,6 +364,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         </section>
       )}
 
+      {!spectating && (
       <section
         className={`space-y-3 rounded-2xl bg-panel p-4 ${
           canDiscardNow || canStealConfirm ? frameMine : "border border-line"
@@ -445,6 +455,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
           </p>
         )}
       </section>
+      )}
 
       {canStealSelect && victim && (
         <section
@@ -576,6 +587,7 @@ export function PlayingView({ room, players, me, onChanged }: Props) {
         )}
       </section>
 
+      {demoHint && <p className="text-sm text-mint">{demoHint}</p>}
       {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
 
       {confirmKind === "discard" && discardLabel && selectedDiscardId && (

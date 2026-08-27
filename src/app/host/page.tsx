@@ -20,6 +20,7 @@ export default function HostPage() {
   const [secret, setSecret] = useState(() => readStoredAdminSecret());
   const [authed, setAuthed] = useState(false);
   const [name, setName] = useState("");
+  const [spectate, setSpectate] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const configured = isSupabaseConfigured();
@@ -88,7 +89,7 @@ export default function HostPage() {
       const { error: roomError } = await supabase.from("rooms").insert({
         code,
         phase: "LOBBY",
-        seat_order: [playerId],
+        seat_order: spectate ? [] : [playerId],
         host_id: playerId,
         field: [],
         deny_count: 0,
@@ -99,7 +100,7 @@ export default function HostPage() {
         id: playerId,
         room_code: code,
         display_name: displayName,
-        seat_index: 0,
+        seat_index: spectate ? null : 0,
         is_host: true,
         hand: [],
       });
@@ -129,7 +130,7 @@ export default function HostPage() {
             ホスト
           </h1>
           <p className="text-sm leading-relaxed text-muted">
-            部屋を作る画面です。合言葉のあとに表示名を入れて開始できます。参加者はトップからコードで入室します。
+            部屋を作る画面です。合言葉のあとに表示名を入れて開始できます。進行役は席に座らず、開始とレポートだけ操作できます。
           </p>
         </header>
 
@@ -174,6 +175,22 @@ export default function HostPage() {
                     if (e.key === "Enter") void createRoom();
                   }}
                 />
+              </label>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-line bg-background px-3 py-3">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={spectate}
+                  onChange={(e) => setSpectate(e.target.checked)}
+                />
+                <span>
+                  <span className="text-sm font-semibold text-foreground">
+                    進行だけする
+                  </span>
+                  <span className="mt-0.5 block text-xs leading-relaxed text-muted">
+                    自分は席に座らず、開始・手番スキップ・レポートだけ操作します。外すと自分もプレイします。
+                  </span>
+                </span>
               </label>
               <button
                 type="button"

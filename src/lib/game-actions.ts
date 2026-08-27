@@ -3,6 +3,7 @@ import {
   HAND_SIZE,
   MAX_DENY,
   TURNS_PER_PLAYER,
+  seatedPlayers,
   type Player,
   type Room,
 } from "@/lib/types";
@@ -217,8 +218,15 @@ export async function gainCard({
   const nextField = room.field.filter((id) => id !== cardId);
   const nextHand = [...victim.hand, cardId];
   const currentTurns = current.turns_completed + 1;
-  const allDone = players.every((p) => {
-    const turns = p.id === currentId ? currentTurns : p.turns_completed;
+  const seatedIds =
+    room.seat_order.length > 0
+      ? room.seat_order
+      : seatedPlayers(players).map((p) => p.id);
+  const allDone = seatedIds.every((id) => {
+    const turns =
+      id === currentId
+        ? currentTurns
+        : (players.find((p) => p.id === id)?.turns_completed ?? 0);
     return turns >= TURNS_PER_PLAYER;
   });
 
@@ -259,6 +267,7 @@ export async function skipTurn({
   supabase,
   room,
   actorId,
+  players,
 }: {
   supabase: SupabaseClient;
   room: Room;
@@ -268,24 +277,58 @@ export async function skipTurn({
   if (room.phase !== "PLAYING") throw new Error("プレイ中のみスキップできます");
   const host = room.host_id;
   if (actorId !== host) throw new Error("ホストだけがスキップできます");
-  if (!room.current_player_id) throw new Error("手番がありません");
+  const currentId = room.current_player_id;
+  if (!currentId) throw new Error("手番がありません");
 
   const ok = typeof window !== "undefined"
     ? window.confirm("この手番をまるごとスキップしますか？（途中の選択は破棄されます）")
     : true;
   if (!ok) return;
 
-  const { error } = await supabase
-    .from("rooms")
-    .update({
-      current_player_id: nextSeatId(room.seat_order, room.current_player_id),
-      sub_state: "STEAL_SELECT",
-      pending_card_id: null,
-      deny_count: 0,
-      denied_card_ids: [],
-    })
-    .eq("code", room.code);
-  if (error) throw error;
+  const current = players.find((p) => p.id === currentId);
+  const currentTurns = (current?.turns_completed ?? 0) + 1;
+  const seatedIds =
+    room.seat_order.length > 0
+      ? room.seat_order
+      : seatedPlayers(players).map((p) => p.id);
+  const allDone = seatedIds.every((id) => {
+    const turns =
+      id === currentId
+        ? currentTurns
+        : (players.find((p) => p.id === id)?.turns_completed ?? 0);
+    return turns >= TURNS_PER_PLAYER;
+  });
+
+  const [{ error: playerError }, { error: roomError }] = await Promise.all([
+    current
+      ? supabase
+          .from("players")
+          .update({ turns_completed: currentTurns })
+          .eq("id", currentId)
+      : Promise.resolve({ error: null }),
+    supabase
+      .from("rooms")
+      .update(
+        allDone
+          ? {
+              phase: "SELECTING",
+              sub_state: null,
+              current_player_id: null,
+              pending_card_id: null,
+              deny_count: 0,
+              denied_card_ids: [],
+            }
+          : {
+              current_player_id: nextSeatId(room.seat_order, currentId),
+              sub_state: "STEAL_SELECT",
+              pending_card_id: null,
+              deny_count: 0,
+              denied_card_ids: [],
+            },
+      )
+      .eq("code", room.code),
+  ]);
+  if (playerError || roomError) throw playerError || roomError;
 }
 
 export async function submitSelection({
@@ -391,11 +434,12 @@ export async function ensureResultPhase({
 }) {
   const { data: latest, error } = await supabase
     .from("players")
-    .select("ready_selecting, ready_writing")
+    .select("ready_selecting, ready_writing, seat_index")
     .eq("room_code", roomCode);
   if (error) throw error;
-  if (!latest?.length) return;
-  if (!latest.every((p) => p.ready_selecting && p.ready_writing)) return;
+  const seated = seatedPlayers(latest ?? []);
+  if (!seated.length) return;
+  if (!seated.every((p) => p.ready_selecting && p.ready_writing)) return;
 
   const { error: roomError } = await supabase
     .from("rooms")
@@ -443,7 +487,7 @@ export async function saveStatement({
 
 export function formatResultsText(players: Player[]): string {
   const lines = ["Value Drop 結果", ""];
-  for (const p of players) {
+  for (const p of seatedPlayers(players)) {
     const finalFive = (p.hand ?? [])
       .map((id) => DECK.find((c) => c.id === id)?.label ?? id)
       .join("、");

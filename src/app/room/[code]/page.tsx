@@ -17,6 +17,8 @@ import {
   MAX_PLAYERS,
   MIN_PLAYERS,
   RECOMMENDED_MAX,
+  isSeatedPlayer,
+  seatedPlayers,
   type Player,
   type Room,
 } from "@/lib/types";
@@ -155,7 +157,7 @@ export default function RoomPage() {
         id,
         room_code: code,
         display_name: displayName,
-        seat_index: players.length,
+        seat_index: seatedPlayers(players).length,
         hand: [],
         turns_completed: 0,
         main_card_id: null,
@@ -187,7 +189,7 @@ export default function RoomPage() {
 
   async function moveSeat(fromIndex: number, direction: -1 | 1) {
     if (!me?.is_host || !room || room.phase !== "LOBBY") return;
-    const ordered = [...players].sort((a, b) => {
+    const ordered = seatedPlayers(players).sort((a, b) => {
       const ai = a.seat_index ?? 999;
       const bi = b.seat_index ?? 999;
       if (ai !== bi) return ai - bi;
@@ -218,17 +220,18 @@ export default function RoomPage() {
 
   async function startGame() {
     if (!me?.is_host || !room) return;
-    if (players.length < MIN_PLAYERS) {
+    const seated = seatedPlayers(players);
+    if (seated.length < MIN_PLAYERS) {
       setError(`${MIN_PLAYERS}人以上必要です`);
       return;
     }
-    if (players.length > MAX_PLAYERS) {
+    if (seated.length > MAX_PLAYERS) {
       setError(`${MAX_PLAYERS}人以下にしてください`);
       return;
     }
-    if (players.length > RECOMMENDED_MAX) {
+    if (seated.length > RECOMMENDED_MAX) {
       const ok = window.confirm(
-        `${players.length}人です。おすすめは${MIN_PLAYERS}〜${RECOMMENDED_MAX}人です。長くなりますが開始しますか？`,
+        `${seated.length}人です。おすすめは${MIN_PLAYERS}〜${RECOMMENDED_MAX}人です。長くなりますが開始しますか？`,
       );
       if (!ok) return;
     }
@@ -237,8 +240,7 @@ export default function RoomPage() {
     setError(null);
     try {
       const supabase = createBrowserClient();
-      // 席順未設定の人を埋める
-      const ordered = [...players].sort((a, b) => {
+      const ordered = [...seated].sort((a, b) => {
         const ai = a.seat_index ?? 999;
         const bi = b.seat_index ?? 999;
         if (ai !== bi) return ai - bi;
@@ -307,7 +309,7 @@ export default function RoomPage() {
             枚のカードからあなたの価値観を掘り出してゆく、ゲーム方式のワークです。
           </p>
           <p className="text-xs text-muted">
-            部屋 {code} ／ いま {players.length} / {MAX_PLAYERS} 人
+            部屋 {code} ／ いま {seatedPlayers(players).length} / {MAX_PLAYERS} 人
           </p>
         </header>
 
@@ -330,7 +332,7 @@ export default function RoomPage() {
 
         <button
           type="button"
-          disabled={busy || players.length >= MAX_PLAYERS}
+          disabled={busy || seatedPlayers(players).length >= MAX_PLAYERS}
           onClick={() => void joinFromInvite()}
           className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
         >
@@ -339,7 +341,12 @@ export default function RoomPage() {
 
         {players.length > 0 && (
           <p className="text-sm text-muted">
-            参加中: {players.map((p) => p.display_name).join("、")}
+            参加中:{" "}
+            {players
+              .map((p) =>
+                isSeatedPlayer(p) ? p.display_name : `${p.display_name}（進行役）`,
+              )
+              .join("、")}
           </p>
         )}
 
@@ -349,12 +356,13 @@ export default function RoomPage() {
     );
   }
 
-  const sortedPlayers = [...players].sort((a, b) => {
+  const sortedPlayers = seatedPlayers(players).sort((a, b) => {
     const ai = a.seat_index ?? 999;
     const bi = b.seat_index ?? 999;
     if (ai !== bi) return ai - bi;
     return (a.created_at ?? "").localeCompare(b.created_at ?? "");
   });
+  const spectatorHost = players.find((p) => p.is_host && !isSeatedPlayer(p));
 
   return (
     <>
@@ -369,7 +377,9 @@ export default function RoomPage() {
           {room.phase === "LOBBY"
             ? "ロビー"
             : room.phase === "PLAYING"
-              ? "プレイ中"
+              ? me && !isSeatedPlayer(me)
+                ? "進行中"
+                : "プレイ中"
               : room.phase === "SELECTING" || room.phase === "WRITING"
                 ? "選定・理由"
                 : room.phase === "RESULT" || room.phase === "CLOSED"
@@ -436,13 +446,23 @@ export default function RoomPage() {
             </div>
 
             <p className="text-xs text-muted">
-              人数 {players.length} / {MAX_PLAYERS}（開始は{MIN_PLAYERS}人以上、おすすめ
+              人数 {sortedPlayers.length} / {MAX_PLAYERS}（開始は{MIN_PLAYERS}人以上、おすすめ
               {MIN_PLAYERS}〜{RECOMMENDED_MAX}）
+              {spectatorHost
+                ? ` ／ 進行役 ${spectatorHost.display_name}`
+                : ""}
             </p>
           </section>
 
           <section className="rounded-2xl border border-line bg-panel p-4 space-y-3">
             <h2 className="text-sm font-semibold text-accent">席順（隣＝次の人）</h2>
+            {spectatorHost && (
+              <p className="text-xs text-muted">
+                進行役 {spectatorHost.display_name}
+                {spectatorHost.id === playerId ? "（あなた）" : ""}
+                は席に座りません。
+              </p>
+            )}
             <ul className="space-y-2">
               {sortedPlayers.map((p, i) => (
                 <li
@@ -488,7 +508,7 @@ export default function RoomPage() {
           {me?.is_host ? (
             <button
               type="button"
-              disabled={busy || players.length < MIN_PLAYERS}
+              disabled={busy || sortedPlayers.length < MIN_PLAYERS}
               onClick={() => void startGame()}
               className="rounded-xl bg-gradient-to-r from-[#6ea8ff] via-[#ff8ec8] to-[#ffb086] px-4 py-3 text-sm font-bold text-[#12122a] disabled:opacity-40"
             >

@@ -11,7 +11,7 @@ import {
   persistAdminSecret,
   readStoredAdminSecret,
 } from "@/lib/admin-secret-storage";
-import type { Player, Room } from "@/lib/types";
+import { isSeatedPlayer, seatedPlayers, type Player, type Room } from "@/lib/types";
 
 type CreatedReport = {
   id: string;
@@ -84,7 +84,7 @@ function AdminReportsInner() {
     const list = data.players ?? [];
     setPlayers(list);
     const next: Record<string, number> = {};
-    for (const p of list) next[p.id] = 1;
+    for (const p of list) next[p.id] = isSeatedPlayer(p) ? 1 : 0;
     setAssignments(next);
   }
 
@@ -272,7 +272,8 @@ function AdminReportsInner() {
         </label>
         {room && (
           <p className="text-xs text-muted">
-            部屋 {room.code} · フェーズ {room.phase} · {players.length}人
+            部屋 {room.code} · フェーズ {room.phase} · {seatedPlayers(players).length}人
+            {players.some((p) => !isSeatedPlayer(p)) ? " ＋進行役" : ""}
           </p>
         )}
       </section>
@@ -289,7 +290,14 @@ function AdminReportsInner() {
                   className="flex flex-col gap-2 rounded-xl bg-background px-3 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:py-2"
                 >
                   <div className="min-w-0">
-                    <p className="font-semibold">{p.display_name}</p>
+                    <p className="font-semibold">
+                      {p.display_name}
+                      {!isSeatedPlayer(p) ? (
+                        <span className="ml-2 text-xs font-normal text-mint">
+                          進行役
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="text-xs text-muted">
                       メイン: {main?.label ?? "—"}
                       {main ? `（${PILLAR_LABEL[main.pillar]}）` : ""}
