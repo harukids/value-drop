@@ -116,11 +116,14 @@ export default function PosterPreviewPage() {
       {error && <p className="text-sm text-[#f0a0a0]">{error}</p>}
 
       <div className="flex flex-wrap gap-3 text-sm">
-        <Link href="/play-preview?view=akari" className="text-mint underline">
-          プレイ見本
+        <Link href="/lobby-preview" className="text-mint underline">
+          ロビー（進行役）
+        </Link>
+        <Link href="/play-preview?view=host" className="text-mint underline">
+          プレイ（進行役）
         </Link>
         <Link href="/result-preview" className="text-mint underline">
-          結果見本
+          結果（進行役）
         </Link>
         <Link href="/" className="text-mint underline">
           トップへ

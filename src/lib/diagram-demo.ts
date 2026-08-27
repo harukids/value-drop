@@ -64,7 +64,7 @@ const PLAY_FIELD = [
 function spectatorHost(): Player {
   return player({
     id: DEMO_IDS.host,
-    display_name: "進行役",
+    display_name: "はるき",
     seat_index: null,
     is_host: true,
   });
@@ -129,6 +129,45 @@ export function getPlayConfirmDemo(view: PlayView): {
         : DEMO_IDS.akari;
   const me = players.find((p) => p.id === meId)!;
   return { room, players, me };
+}
+
+export function getLobbyDemo(): {
+  room: Room;
+  players: Player[];
+  me: Player;
+} {
+  const host = spectatorHost();
+  const players = [
+    host,
+    player({
+      id: DEMO_IDS.akari,
+      display_name: "あかり",
+      seat_index: 0,
+    }),
+    player({
+      id: DEMO_IDS.sota,
+      display_name: "そうた",
+      seat_index: 1,
+    }),
+    player({
+      id: DEMO_IDS.minato,
+      display_name: "みなと",
+      seat_index: 2,
+    }),
+  ];
+  const room: Room = {
+    code: DEMO_ROOM_CODE,
+    phase: "LOBBY",
+    seat_order: [DEMO_IDS.akari, DEMO_IDS.sota, DEMO_IDS.minato],
+    current_player_id: null,
+    sub_state: null,
+    pending_card_id: null,
+    deny_count: 0,
+    denied_card_ids: [],
+    host_id: DEMO_IDS.host,
+    field: [],
+  };
+  return { room, players, me: host };
 }
 
 const SELECT_HAND = [

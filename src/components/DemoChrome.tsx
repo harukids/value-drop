@@ -43,6 +43,9 @@ export function DemoChrome({
       </header>
       {children}
       <nav className="flex flex-wrap gap-3 text-sm">
+        <Link href="/lobby-preview" className="text-mint underline">
+          ロビー（進行役）
+        </Link>
         <Link href="/play-preview?view=akari" className="text-mint underline">
           プレイ（あかり）
         </Link>
